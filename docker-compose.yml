@@ -19,6 +19,7 @@ services:
       - DATABASE_URL=postgresql+psycopg2://aadya:aadya_password@postgres:5432/aadya
       - OPENAI_API_KEY
       - SECRET_KEY
+      - GROQ_API_KEY
     volumes:
       - ./backend/app:/app/app
       - faissdata:/app/faiss_data

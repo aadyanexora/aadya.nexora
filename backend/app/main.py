@@ -19,6 +19,10 @@ app.add_middleware(
 def on_startup():
     # Create DB tables
     from app.db import base
+    # import all models so they are registered on the metadata
+    import app.models.user
+    import app.models.document
+    import app.models.chat
 
     base.Base.metadata.create_all(bind=db_session.engine)
     # Ensure FAISS dir exists

@@ -8,10 +8,9 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     DATABASE_URL: str
-    OPENAI_API_KEY: str
     SECRET_KEY: str
     FAISS_DIR: str = "./faiss_data"
-    EMBEDDING_DIM: int = 1536
+    EMBEDDING_DIM: int = 384
     PROJECT_NAME: str = "Aadya - Nexora AI"
     GROQ_API_KEY: str  # key for Groq chat provider
 

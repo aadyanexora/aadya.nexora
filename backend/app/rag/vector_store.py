@@ -14,8 +14,22 @@ class FaissVectorStore:
         self._load()
 
     def _load(self):
+        # if existing index present, validate dimension and recreate if mismatch
         if os.path.exists(self.index_path):
-            self.index = faiss.read_index(self.index_path)
+            try:
+                self.index = faiss.read_index(self.index_path)
+                # verify dim
+                if self.index.ntotal > 0:
+                    idx_dim = self.index.d
+                else:
+                    # for empty IndexFlatL2, d attribute exists
+                    idx_dim = self.index.d
+                if idx_dim != self.dim:
+                    # recreate index with correct dim
+                    self.index = faiss.IndexFlatL2(self.dim)
+            except Exception:
+                # on any error, recreate fresh index
+                self.index = faiss.IndexFlatL2(self.dim)
         else:
             self.index = faiss.IndexFlatL2(self.dim)
 

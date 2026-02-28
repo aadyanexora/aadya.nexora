@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
 
 router = APIRouter()
 
@@ -40,7 +40,8 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer"}
 
 @router.get("/me")
-def me(authorization: str = Depends(lambda: None), db: Session = Depends(get_db)):
+def me(authorization: str | None = Header(None), db: Session = Depends(get_db)):
+    # Header will come in as "Bearer <token>"
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     token = authorization.split(" ")[-1]
