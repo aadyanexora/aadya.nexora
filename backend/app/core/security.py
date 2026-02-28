@@ -4,11 +4,16 @@ import jwt
 from fastapi import HTTPException
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use sha256_crypt only to avoid bcrypt runtime issues
+pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    # bcrypt has 72-byte limit; truncate if necessary
+    pw = password if isinstance(password, str) else str(password)
+    if len(pw.encode('utf-8')) > 72:
+        pw = pw[:72]
+    return pwd_context.hash(pw)
 
 
 def verify_password(plain: str, hashed: str) -> bool:

@@ -38,9 +38,8 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token(str(user.id))
     return {"access_token": token, "token_type": "bearer"}
-+
-+
-+@router.get("/me")
+
+@router.get("/me")
 def me(authorization: str = Depends(lambda: None), db: Session = Depends(get_db)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
