@@ -14,3 +14,5 @@ httpx==0.26.0
 sentence-transformers==2.2.2
 torch==2.2.2
 huggingface-hub==0.16.4
+prometheus_client==0.16.0
+python-multipart==0.0.6

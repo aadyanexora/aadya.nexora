@@ -2,7 +2,7 @@ import faiss
 import numpy as np
 import os
 import pickle
-from typing import List, Tuple
+from typing import List, Tuple, Union, Dict
 from app.core.config import settings
 
 
@@ -37,27 +37,32 @@ class FaissVectorStore:
             with open(self.map_path, "rb") as f:
                 self.mapping = pickle.load(f)
         else:
-            self.mapping = {}
+            # mapping maps index -> (document_id, chunk_index)
+            self.mapping: Dict[int, Tuple[int, int]] = {}
 
-    def add(self, vectors: List[List[float]], doc_ids: List[int]):
+    def add(self, vectors: List[List[float]], meta: List[Tuple[int, int]]):
+        """`meta` is a list of (document_id, chunk_index) corresponding to each vector."""
         arr = np.array(vectors).astype("float32")
         start = self.index.ntotal
         self.index.add(arr)
-        for i, doc_id in enumerate(doc_ids):
-            self.mapping[start + i] = doc_id
+        for i, m in enumerate(meta):
+            self.mapping[start + i] = m
         self._persist()
 
-    def search(self, vector: List[float], top_k: int = 3) -> List[Tuple[int, float]]:
+    def search(self, vector: List[float], top_k: int = 3) -> List[Tuple[int, int, float]]:
         if self.index.ntotal == 0:
             return []
         xq = np.array([vector]).astype("float32")
         D, I = self.index.search(xq, top_k)
-        results = []
+        results: List[Tuple[int, int, float]] = []
         for score, idx in zip(D[0], I[0]):
             if idx == -1:
                 continue
-            doc_id = self.mapping.get(int(idx))
-            results.append((doc_id, float(score)))
+            meta = self.mapping.get(int(idx))
+            if not meta:
+                continue
+            doc_id, chunk_idx = meta
+            results.append((doc_id, chunk_idx, float(score)))
         return results
 
     def _persist(self):
