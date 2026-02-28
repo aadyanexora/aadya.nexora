@@ -21,7 +21,7 @@ docker compose up --build
    Backend: http://localhost:8000
 
 Notes:
-- Set `OPENAI_API_KEY`, `SECRET_KEY` and `DATABASE_URL` in `.env`.
+- Set `GROQ_API_KEY`, `SECRET_KEY` and `DATABASE_URL` in `.env`.
 - FAISS index persists to volume `faissdata` configured in `docker-compose.yml`.
 
 ## Features & API Endpoints
@@ -60,5 +60,5 @@ JWT tokens use `SECRET_KEY` and are required on protected endpoints via `Authori
 - Environment variables injected via `.env`.
 
 ### Environment Variables
-- `OPENAI_API_KEY`, `DATABASE_URL`, `SECRET_KEY`, and optional `FAISS_DIR`.
+- `GROQ_API_KEY`, `DATABASE_URL`, `SECRET_KEY`, and optional `FAISS_DIR`.
 # aadya.nexora
