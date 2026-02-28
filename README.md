@@ -83,3 +83,8 @@ JWT tokens use `SECRET_KEY` and are required on protected endpoints via `Authori
   survives restarts.
 
 # aadya.nexora
+
+---
+
+© 2026 Aidni Global LLP. All rights reserved.
+Application designed, architected and developed by Hardikkumar Gajjar.
