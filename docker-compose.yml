@@ -1,0 +1,37 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: aadya
+      POSTGRES_USER: aadya
+      POSTGRES_PASSWORD: aadya_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    depends_on:
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://aadya:aadya_password@postgres:5432/aadya
+      - OPENAI_API_KEY
+      - SECRET_KEY
+    volumes:
+      - ./backend/app:/app/app
+      - faissdata:/app/faiss_data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  faissdata:
