@@ -38,7 +38,7 @@ def on_startup():
 
     db: Session = db_session.SessionLocal()
     try:
-        admin_email = "hardik@aidniglobal.com"
+        admin_email = "aadya.nexora@gmail.com"
         admin_password = "Gaatha@1805"
         existing = db.query(User).filter(User.email == admin_email).first()
         if not existing:

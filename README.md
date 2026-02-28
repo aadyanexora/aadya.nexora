@@ -28,7 +28,7 @@ Notes:
 - Set `GROQ_API_KEY`, `SECRET_KEY` and `DATABASE_URL` in `.env`.
 - FAISS index persists to volume `faissdata` configured in `docker-compose.yml`.
 - A default super‑admin account is created on startup if it doesn't exist:
-  - **email:** hardik@aidniglobal.com
+  - **email:** aadya.nexora@gmail.com
   - **password:** Gaatha@1805
   Change or remove these credentials for production!
 
