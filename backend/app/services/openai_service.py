@@ -60,8 +60,15 @@ class OpenAIService:
             for line in r.iter_lines():
                 if not line:
                     continue
+                # handle bytes or str
+                if isinstance(line, bytes):
+                    try:
+                        text = line.decode("utf-8")
+                    except Exception:
+                        continue
+                else:
+                    text = line
                 # Groq uses data: prefix similar to OpenAI
-                text = line.decode("utf-8")
                 if text.startswith("data: "):
                     try:
                         chunk = json.loads(text[len("data: "):])
