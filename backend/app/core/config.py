@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     FAISS_DIR: str = "./faiss_data"
     EMBEDDING_DIM: int = 1536
     PROJECT_NAME: str = "Aadya - Nexora AI"
+    GROQ_API_KEY: str  # key for Groq chat provider
 
     class Config:
         env_file = ".env"
