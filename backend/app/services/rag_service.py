@@ -27,10 +27,12 @@ class RAGService:
 
         db = SessionLocal()
         try:
-            for doc_id, score in hits:
-                doc = db.execute(f"SELECT content FROM documents WHERE id = :id", {"id": doc_id}).fetchone()
-                if doc:
-                    docs.append(doc[0])
+            from sqlalchemy import text
+        for doc_id, score in hits:
+            stmt = text("SELECT content FROM documents WHERE id = :id")
+            doc = db.execute(stmt, {"id": doc_id}).fetchone()
+            if doc:
+                docs.append(doc[0])
         finally:
             db.close()
         return docs
