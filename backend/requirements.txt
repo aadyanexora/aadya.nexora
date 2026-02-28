@@ -13,3 +13,4 @@ faiss-cpu==1.7.4
 httpx==0.26.0
 sentence-transformers==2.2.2
 torch==2.2.2
+huggingface-hub==0.16.4
