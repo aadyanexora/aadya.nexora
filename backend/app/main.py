@@ -66,14 +66,15 @@ def on_startup():
 
     # ==== Super-admin seeding ====
     # create a default administrator if it doesn't already exist
+    # credentials come from settings so they can be overridden via env/.env
     from app.models.user import User
     from app.core.security import hash_password
     from sqlalchemy.orm import Session
 
     db: Session = db_session.SessionLocal()
     try:
-        admin_email = "aadya.nexora@gmail.com"
-        admin_password = "Gaatha@1805"
+        admin_email = settings.ADMIN_EMAIL
+        admin_password = settings.ADMIN_PASSWORD
         existing = db.query(User).filter(User.email == admin_email).first()
         if not existing:
             admin = User(

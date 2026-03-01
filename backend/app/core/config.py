@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Aadya - Nexora AI"
     GROQ_API_KEY: str  # key for Groq chat provider
 
+    # default administrator credentials (can be overridden via env or .env)
+    ADMIN_EMAIL: str = "admin@example.com"
+    ADMIN_PASSWORD: str = "admin123"
+
     class Config:
         env_file = ".env"
 

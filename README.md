@@ -27,9 +27,25 @@ docker compose up --build
 Notes:
 - Set `GROQ_API_KEY`, `SECRET_KEY` and `DATABASE_URL` in `.env`.
 - FAISS index persists to volume `faissdata` configured in `docker-compose.yml`.
-- A default super‑admin account is created on startup if it doesn't exist:
-  - **email:** aadya.nexora@gmail.com
-  - **password:** Gaatha@1805
+- The backend will automatically seed an administrator user on startup if one
+  does not already exist. By default the credentials are:
+  - **email:** `admin@example.com`  (override via `ADMIN_EMAIL` env)
+  - **password:** `admin123`  (override via `ADMIN_PASSWORD` env)
+  You can also run the helper script manually from the repository root:
+
+```bash
+# developer host (requires dependencies installed; may need to override DATABASE_URL)
+python backend/seed_admin.py            # creates/updates admin user
+python backend/seed_admin.py --email foo --password bar   # custom creds
+```
+
+  or execute the packaged version inside the backend container:
+
+```bash
+docker exec aadyanexora-backend-1 python -m app.seed_admin
+# pass flags the same way or via ADMIN_EMAIL/ADMIN_PASSWORD env vars
+```
+
   Change or remove these credentials for production!
 
 ## Features & API Endpoints
