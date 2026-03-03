@@ -1,13 +1,9 @@
 function getApiBase() {
+  // prefer explicit override, otherwise use relative path (empty string)
   if (process.env.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL
   }
-  if (typeof window !== "undefined") {
-    const proto = window.location.protocol
-    const host = window.location.hostname
-    return `${proto}//${host}:8000`
-  }
-  return "http://localhost:8000"
+  return "" // will result in "/api/..." requests
 }
 
 export async function register(email: string, password: string) {
