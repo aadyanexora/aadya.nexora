@@ -15,17 +15,17 @@ export default function ChatPage(){
   const [messages,setMessages]=useState<Message[]>([])
   const [conversations,setConversations]=useState<Conversation[]>([])
   const [convId,setConvId]=useState<number | null>(null)
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
   const abortRef = useRef<() => void | null>(null)
 
   useEffect(()=>{
-    if(!token) return
-    listConversations(token).then(setConversations)
-  },[token])
+    // list all convs without auth
+    listConversations('')
+      .then(setConversations)
+      .catch(()=>{})
+  },[])
 
   async function loadHistory(id: number){
-    if(!token) return
-    const hist = await getHistory(token, id)
+    const hist = await getHistory('', id)
     const msgs: Message[] = hist.map((m:any)=>({role:m.role, text:m.content}))
     setMessages(msgs)
     setConvId(id)
@@ -53,8 +53,7 @@ export default function ChatPage(){
   async function send(){
     if(!input.trim()) return
     setMessages(prev => [...prev, {role:'user', text: input}])
-    const t = token || ''
-    const cancel = streamChat(input, t, {onMessage, onMeta}, convId || undefined)
+    const cancel = streamChat(input, '', {onMessage, onMeta}, convId || undefined)
     abortRef.current = cancel
     setInput("")
   }

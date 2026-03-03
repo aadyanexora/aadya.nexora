@@ -18,22 +18,27 @@ class ChatIn(BaseModel):
     conversation_id: Optional[int] = None
 
 
-def get_current_user(authorization: str = Header(None)):
+def get_current_user_optional(authorization: str = Header(None)):
+    # if token provided, decode it; otherwise return None
     if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-    token = authorization.split(" ")[-1]
-    data = decode_access_token(token)
-    return data.get("sub")
+        return None
+    try:
+        token = authorization.split(" ")[-1]
+        data = decode_access_token(token)
+        return data.get("sub")
+    except Exception:
+        return None
 
 
 @router.post("/stream")
 def chat_stream(
-    payload: ChatIn, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)
+    payload: ChatIn, db: Session = Depends(get_db), user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     # Ensure conversation
     conv_id = payload.conversation_id
     if not conv_id:
-        conv = Conversation(user_id=int(user_id))
+        # when there is no user, store user_id as None or 0
+        conv = Conversation(user_id=int(user_id) if user_id else None)
         db.add(conv)
         db.commit()
         db.refresh(conv)
@@ -41,7 +46,10 @@ def chat_stream(
 
     # Save user message
     user_msg = Message(
-        conversation_id=conv_id, user_id=int(user_id), role="user", content=payload.message
+        conversation_id=conv_id,
+        user_id=int(user_id) if user_id else None,
+        role="user",
+        content=payload.message,
     )
     db.add(user_msg)
     db.commit()
@@ -88,8 +96,12 @@ def chat_stream(
 
 
 @router.get("/conversations")
-def list_conversations(user_id: str = Depends(get_current_user), db: Session = Depends(get_db)):
-    convs = db.query(Conversation).filter(Conversation.user_id == int(user_id)).all()
+def list_conversations(user_id: Optional[str] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
+    # return all conversations if no user; otherwise filter
+    query = db.query(Conversation)
+    if user_id:
+        query = query.filter(Conversation.user_id == int(user_id))
+    convs = query.all()
     return [
         {"id": c.id, "title": c.title, "created_at": c.created_at.isoformat()}
         for c in convs
@@ -98,7 +110,7 @@ def list_conversations(user_id: str = Depends(get_current_user), db: Session = D
 
 @router.get("/history/{conv_id}")
 def get_history(
-    conv_id: int, user_id: str = Depends(get_current_user), db: Session = Depends(get_db)
+    conv_id: int, user_id: Optional[str] = Depends(get_current_user_optional), db: Session = Depends(get_db)
 ):
     msgs = (
         db.query(Message)

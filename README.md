@@ -4,7 +4,7 @@
 **Company:** Aidni Global LLP  
 **Architect / Designer / Developer:** Hardikkumar Gajjar  
 
-Minimal investor-demo ready full-stack app: FastAPI backend + Next.js frontend with RAG (FAISS) and local embeddings + Groq chat.
+Minimal investor-demo ready full-stack app: FastAPI backend + Next.js frontend with RAG (FAISS) and local embeddings + Groq chat.  (uses SQLite by default; no database server required)
 
 Quick start (local):
 
@@ -20,6 +20,11 @@ cp .env.example .env
 ```bash
 docker compose up --build
 ```
+
+> note: the compose configuration now uses SQLite and no longer requires a Postgres
+> container. chat is available without authentication by default; login/register
+> remain optional for tracking conversations, and admin ingest is not exposed in
+> the frontend UI.
 
 3. Frontend: http://localhost:3000
    Backend: http://localhost:8000
@@ -51,11 +56,12 @@ docker exec aadyanexora-backend-1 python -m app.seed_admin
 ## Features & API Endpoints
 
 ### Authentication
-- `POST /api/auth/register` – create a user and return JWT.
-- `POST /api/auth/login` – obtain JWT for existing user.
-- `GET /api/auth/me` – protected route returns current user info.
+- `POST /api/auth/register` – create a user and return JWT (optional).
+- `POST /api/auth/login` – obtain JWT for existing user (optional).
+- `GET /api/auth/me` – returns current user info when authenticated.
 
-JWT tokens use `SECRET_KEY` and are required on protected endpoints via `Authorization: Bearer <token>` header.
+JWT tokens use `SECRET_KEY` and are accepted on endpoints that support them, but
+chat endpoints no longer require authentication in order to function.
 
 ### Chat & RAG
 - `POST /api/chat/stream` – protected endpoint accepting `message` and optional `conversation_id`.
@@ -69,10 +75,12 @@ JWT tokens use `SECRET_KEY` and are required on protected endpoints via `Authori
 
 
 ### Admin
-- `POST /api/admin/ingest` – ingest arbitrary text documents (admin only). Adds documents to `documents` table and indexes embeddings into FAISS.
+- `POST /api/admin/ingest` – ingest arbitrary text documents (admin only).
+  This endpoint is **not linked from the frontend**, keeping the UI clean.
 
 ### Database
-- PostgreSQL with tables for `users`, `conversations`, `messages`, and `documents`.
+- SQLite by default (`aadya.db` file) with tables for `users`, `conversations`, `messages`, and `documents`.
+- You can override `DATABASE_URL` to point at another database if desired.
 - SQLAlchemy ORM with session management in `app/db`.
 
 ### Vector Store
