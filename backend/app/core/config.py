@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    # default to local sqlite file, override with DATABASE_URL env
-    DATABASE_URL: str = "sqlite:///./aadya.db"
+    # database URL must be supplied in production; SQLite support has been removed.
+    DATABASE_URL: str
     SECRET_KEY: str
     FAISS_DIR: str = "./faiss_data"
     EMBEDDING_DIM: int = 384

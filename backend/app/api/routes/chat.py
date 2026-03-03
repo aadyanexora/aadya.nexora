@@ -10,7 +10,12 @@ from app.services.openai_service import OpenAIService
 from app.services.rag_service import RAGService
 import json
 
+# rate limiter import
+from slowapi import Limiter
+from fastapi import Request
+
 router = APIRouter()
+limiter = Limiter(key_func=lambda request: request.client.host)
 
 
 class ChatIn(BaseModel):
@@ -31,7 +36,9 @@ def get_current_user_optional(authorization: str = Header(None)):
 
 
 @router.post("/stream")
+@limiter.limit("10/minute")
 def chat_stream(
+    request: Request,
     payload: ChatIn, db: Session = Depends(get_db), user_id: Optional[str] = Depends(get_current_user_optional)
 ):
     # Ensure conversation

@@ -1,0 +1,63 @@
+Aadya – Nexora AI
+Current Application Status
+===========================
+
+Architecture:
+- Backend: FastAPI application structured under `backend/app` with modular routers
+  (auth, chat, admin).
+- Database: PostgreSQL container; SQLAlchemy ORM with models for users, documents,
+  document_chunks, conversations, messages.
+- Embeddings: Local SentenceTransformers (all-MiniLM-L6-v2) used via
+  `OpenAIService.get_embeddings`.
+- Vector store: FAISS persisted under a docker volume; vector metadata maps
+  (doc_id, chunk_index).
+- Chat: Groq API streaming for responses; multi-turn context and RAG retrieval
+  implemented.
+- Frontend: Next.js 14 (App Router, TypeScript) with Tailwind CSS for styling.
+
+Key Features:
+- JWT authentication with admin check.
+- Document ingestion with automatic chunking (500-token chunks, 50-token
+  overlap) and metadata tracking.
+- Admin-only ingestion endpoints with payload validation.
+- Conversation history persisted; endpoints to list conversations and fetch
+  history.
+- Streaming chat endpoint returning conversation and context metadata.
+- Structured logging with request IDs and Prometheus metrics (/metrics).
+- Rate limiting via slowapi (10 requests/min on chat streaming).
+- Health endpoint (/health) and Docker-compose service healthchecks.
+- Multi-stage Dockerfiles for lean production images; Torch 2.0 CPU installed.
+- Alembic migration framework initialized with an initial migration script.
+
+Development Notes:
+- Logging config moved to `app/core/logging.py`.
+- Rate limiter configured in `main.py`; chat route decorated with limiter.
+- Frontend styled using Tailwind; chat and dashboard pages upgraded.
+- Docker-compose includes volumes for Postgres and FAISS persistence.
+- Additional tooling: python-multipart, slowapi, alembic added to requirements.
+
+Next Improvements:
+- Add GPU support or alternative embedding model if needed.
+- Enhance admin UI with file upload.
+- Implement background workers for ingestion and embeddings.
+- Add more observability (Sentry, Grafana dashboard).
+
+Repo housekeeping / Termux move
+-----------------------------
+- A cleanup script was added at `scripts/clean_caches.sh` to remove `__pycache__`,
+  `*.pyc`, frontend `.next` and `node_modules` before packaging the repository
+  for transfer to Termux or other constrained environments.
+- `.gitignore` updated to ignore common cache and build artifacts.
+
+Instructions for running migrations:
+  cd backend
+  alembic upgrade head
+
+Notes about Termux:
+- Building heavy native dependencies (Torch, FAISS) is rarely feasible directly
+  in Termux. Recommended approach is to either use prebuilt wheels, perform
+  heavy builds on a remote machine and copy artifacts, or use remote embedding
+  services while running the lightweight backend in Termux.
+
+This file is intended to be shared with ChatGPT for further architectural
+suggestions or audit and reflects the current development stage.

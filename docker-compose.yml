@@ -1,5 +1,20 @@
 version: "3.8"
 services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: aadya
+      POSTGRES_PASSWORD: aadya_password
+      POSTGRES_DB: aadya
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aadya"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -7,10 +22,13 @@ services:
     env_file:
       - .env
     volumes:
-      - ./backend/app:/app/app
+      - ./backend/app:/app/app:cached
       - faissdata:/app/faiss_data
     ports:
       - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 10s
@@ -31,3 +49,4 @@ services:
 
 volumes:
   faissdata:
+  pgdata:

@@ -59,29 +59,29 @@ export default function ChatPage(){
   }
 
   return (
-    <div style={{padding:24}}>
-      <h2>Chat</h2>
-      <div style={{display:'flex', gap:24}}>
-        <div style={{width:200}}>
-          <h3>Conversations</h3>
+    <div className="p-6">
+      <h2 className="text-2xl font-semibold mb-4">Chat</h2>
+      <div className="flex gap-6">
+        <div className="w-48">
+          <h3 className="font-medium mb-2">Conversations</h3>
           {conversations.map(c=>(
-            <div key={c.id} onClick={()=>loadHistory(c.id)} style={{cursor:'pointer',padding:4,border:c.id===convId?"1px solid #000":"1px solid #ddd"}}>
+            <div key={c.id} onClick={()=>loadHistory(c.id)} className={`cursor-pointer p-2 rounded ${c.id===convId?"border border-black":"border border-gray-300"}`}>
               {c.title} ({new Date(c.created_at).toLocaleString()})
             </div>
           ))}
-          <button onClick={()=>{setMessages([]);setConvId(null);}}>New</button>
+          <button className="mt-2 px-3 py-1 bg-blue-500 text-white rounded" onClick={()=>{setMessages([]);setConvId(null);}}>New</button>
         </div>
-        <div style={{flex:1}}>
-          <div style={{border:'1px solid #ddd',padding:12,minHeight:200}}>
+        <div className="flex-1">
+          <div className="border border-gray-300 p-4 min-h-[200px]">
             {messages.map((m,i)=>(
-              <div key={i} style={{marginBottom:8}}>
+              <div key={i} className="mb-2">
                 {m.role === 'meta' ? <em>{m.text}</em> : m.text}
               </div>
             ))}
           </div>
-          <div style={{marginTop:12}}>
-            <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask something..." style={{width:'60%'}} />
-            <button onClick={send}>Send</button>
+          <div className="mt-3 flex gap-2">
+            <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask something..." className="flex-1 border p-2 rounded" />
+            <button className="px-4 py-2 bg-green-500 text-white rounded" onClick={send}>Send</button>
           </div>
         </div>
       </div>

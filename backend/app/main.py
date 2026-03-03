@@ -3,23 +3,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db import session as db_session
 from app.api import auth, chat, admin
-import logging
+
+# bring in centralized logging
+from app.core.logging import get_logger
 import time
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import uuid
 
-# basic structured logging configuration
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s [%(request_id)s] %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger(__name__)
+# rate limiting
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+logger = get_logger(__name__)
 
 # prometheus metrics
 REQUEST_COUNT = Counter("app_requests_total", "Total HTTP requests", ["method", "endpoint"])
 REQUEST_LATENCY = Histogram("app_request_latency_seconds", "Request latency", ["endpoint"])
 
+# initialize limiter
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="Aadya - Nexora AI")
+
+# SlowAPI rate limiter middleware
+from slowapi.middleware import SlowAPIMiddleware
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(429, lambda request, exc: Response("Too many requests", status_code=429))
 
 app.add_middleware(
     CORSMiddleware,

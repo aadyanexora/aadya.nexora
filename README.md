@@ -4,7 +4,7 @@
 **Company:** Aidni Global LLP  
 **Architect / Designer / Developer:** Hardikkumar Gajjar  
 
-Minimal investor-demo ready full-stack app: FastAPI backend + Next.js frontend with RAG (FAISS) and local embeddings + Groq chat.  (uses SQLite by default; no database server required)
+Minimal investor-demo ready full-stack app: FastAPI backend + Next.js frontend with RAG (FAISS) and local embeddings + Groq chat.  (requires PostgreSQL; no built-in SQLite fallback is provided)
 
 Quick start (local):
 
@@ -21,10 +21,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-> note: the compose configuration now uses SQLite and no longer requires a Postgres
-> container. chat is available without authentication by default; login/register
-> remain optional for tracking conversations, and admin ingest is not exposed in
-> the frontend UI.
+> note: for production deployments the backend requires a PostgreSQL server.
+> the compose configuration includes a `postgres` service that starts on
+> `postgres:5432` and the default credentials are shown in the `.env.example`.
+> chat is available without authentication by default; login/register remain
+> optional for tracking conversations, and admin ingest is not exposed in the
+> frontend UI.
 
 3. Frontend: http://localhost:3000
    Backend: http://localhost:8000
@@ -79,7 +81,7 @@ chat endpoints no longer require authentication in order to function.
   This endpoint is **not linked from the frontend**, keeping the UI clean.
 
 ### Database
-- SQLite by default (`aadya.db` file) with tables for `users`, `conversations`, `messages`, and `documents`.
+- PostgreSQL database with tables for `users`, `conversations`, `messages`, and `documents`.  Set `DATABASE_URL` appropriately; an example env file is provided.
 - You can override `DATABASE_URL` to point at another database if desired.
 - SQLAlchemy ORM with session management in `app/db`.
 
@@ -99,6 +101,30 @@ chat endpoints no longer require authentication in order to function.
 
 ### Environment Variables
 - `GROQ_API_KEY`, `DATABASE_URL`, `SECRET_KEY`, and optional `FAISS_DIR`.
+
+Termux / Android notes
+----------------------
+- This repository can be prepared for Termux-based development (Android) but
+  building heavy native wheels (e.g. `torch`, `faiss`) on-device is often
+  impractical. Recommended workflow:
+  1. Run the included cleanup script to remove caches before packaging: `./scripts/clean_caches.sh`
+  2. Install Python 3.11+ in Termux and `pip`.
+  3. Install lightweight dependencies first (`pip install -r backend/requirements.txt`) and
+    skip or replace heavy packages (Torch/FAISS) if they are unavailable; consider
+    using a remote build machine or prebuilt wheels and copying the `backend` folder.
+  4. For a reproducible small install on Termux, consider swapping to a smaller
+    embedding model or using remote embeddings instead of local FAISS.
+
+Cleaning caches
+---------------
+- To remove repository cache files and build artifacts before transferring to Termux run:
+
+```bash
+chmod +x ./scripts/clean_caches.sh
+./scripts/clean_caches.sh
+```
+
+This removes `__pycache__`, `*.pyc`, frontend `.next` and `node_modules` folders.
 
 **Deployment/CI notes:**
 - Ensure `.env` values are provided in your deployment environment;
