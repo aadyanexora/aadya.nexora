@@ -10,14 +10,13 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install dependencies
 COPY requirements.txt .
-
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
-COPY alembic ./alembic
-COPY alembic.ini .
+# Copy backend files (app, alembic, etc.)
+COPY . .
 
 EXPOSE 8000
 
