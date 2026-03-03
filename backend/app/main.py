@@ -31,9 +31,12 @@ app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(429, lambda request, exc: Response("Too many requests", status_code=429))
 
+# configure CORS from settings (defaults to localhost dev origin)
+from app.core.config import settings
+allow_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(',') if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,19 +64,33 @@ def metrics():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # basic checks: DB connectivity and FAISS dir
+    ok = True
+    details = {}
+    try:
+        from sqlalchemy import text
+        db = db_session.SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        details["db"] = "ok"
+    except Exception as e:
+        ok = False
+        details["db"] = f"error: {str(e)}"
+
+    try:
+        import os
+        fdir = settings.FAISS_DIR
+        details["faiss_dir_exists"] = os.path.exists(fdir)
+        ok = ok and details["faiss_dir_exists"]
+    except Exception as e:
+        ok = False
+        details["faiss"] = f"error: {str(e)}"
+
+    return {"status": "ok" if ok else "error", "details": details}
 
 
 @app.on_event("startup")
 def on_startup():
-    # Create DB tables
-    from app.db import base
-    # import all models so they are registered on the metadata
-    import app.models.user
-    import app.models.document
-    import app.models.chat
-
-    base.Base.metadata.create_all(bind=db_session.engine)
     # Ensure FAISS dir exists
     import os
 

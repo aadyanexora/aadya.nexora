@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     EMBEDDING_DIM: int = 384
     PROJECT_NAME: str = "Aadya - Nexora AI"
     GROQ_API_KEY: str  # key for Groq chat provider
+    # allowed CORS origins (comma-separated or list in env)
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
 
     # default administrator credentials (can be overridden via env or .env)
     ADMIN_EMAIL: str = "admin@example.com"

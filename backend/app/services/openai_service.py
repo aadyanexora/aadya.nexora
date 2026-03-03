@@ -33,7 +33,8 @@ class OpenAIService:
             # work around numpy types
             return [list(map(float, e)) for e in embs]
 
-    def chat_with_context(self, message: str, contexts: List[str]) -> str:
+    def chat_with_context(self, message: str, contexts: List[str]):
+        """Return tuple of (content, tokens_used_or_None)"""
         prompt = self._build_prompt(message, contexts)
         payload = {
             "model": self.chat_model,
@@ -44,9 +45,18 @@ class OpenAIService:
         data = resp.json()
         # safe traversal
         try:
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
         except Exception:
-            return ""
+            content = ""
+        # try to get token usage if available
+        usage = None
+        try:
+            usage = data.get("usage", {}).get("total_tokens") or data.get("usage", {}).get("total_tokens")
+            if usage is not None:
+                usage = int(usage)
+        except Exception:
+            usage = None
+        return content, usage
 
     def stream_chat_with_context(self, message: str, contexts: List[str]) -> Iterator[str]:
         prompt = self._build_prompt(message, contexts)

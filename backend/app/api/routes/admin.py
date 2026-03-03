@@ -6,26 +6,36 @@ from app.core.security import decode_access_token
 from app.db.session import get_db
 from sqlalchemy.orm import Session
 from app.models.user import User
+from app.core.dependencies import admin_required
 
 router = APIRouter()
+
+@router.get('/analytics/summary')
+def analytics_summary(user: User = Depends(admin_required), db: Session = Depends(get_db)):
+    from sqlalchemy import func
+    from app.models.chat import Conversation, Message
+    from app.models.usage_log import UsageLog
+
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    total_conversations = db.query(func.count(Conversation.id)).scalar() or 0
+    total_messages = db.query(func.count(Message.id)).scalar() or 0
+    avg_response_time = db.query(func.avg(UsageLog.response_time_ms)).scalar() or 0
+    # requests in last 24h
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    total_requests_24h = db.query(func.count(UsageLog.id)).filter(UsageLog.created_at >= cutoff).scalar() or 0
+
+    return {
+        "total_users": int(total_users),
+        "total_conversations": int(total_conversations),
+        "total_messages": int(total_messages),
+        "avg_response_time": float(avg_response_time) if avg_response_time is not None else 0.0,
+        "total_requests_24h": int(total_requests_24h),
+    }
 
 
 class IngestIn(BaseModel):
     texts: Optional[List[str]] = None
-
-
-def admin_required(
-    authorization: str = Header(None), db: Session = Depends(get_db)
-) -> User:
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-    token = authorization.split(" ")[-1]
-    data = decode_access_token(token)
-    user_id = data.get("sub")
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if not user or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin required")
-    return user
 
 
 @router.post("/ingest")

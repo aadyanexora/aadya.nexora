@@ -1,11 +1,15 @@
 "use client"
 import { useEffect, useState, useRef } from "react"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { streamChat, listConversations, getHistory } from "../../lib/api"
 
 type Message = {
   role: "user" | "assistant" | "meta"
   text: string
   meta?: any
+  sources?: any[]
+  timestamp?: string
 }
 
 type Conversation = { id: number; title: string; created_at: string }
@@ -16,6 +20,7 @@ export default function ChatPage(){
   const [conversations,setConversations]=useState<Conversation[]>([])
   const [convId,setConvId]=useState<number | null>(null)
   const abortRef = useRef<() => void | null>(null)
+  const [waitingFirst, setWaitingFirst] = useState(false)
 
   useEffect(()=>{
     // list all convs without auth
@@ -34,7 +39,8 @@ export default function ChatPage(){
   function onMessage(chunk: string){
     setMessages(prev=>{
       if(prev.length === 0 || prev[prev.length-1].role !== "assistant"){
-        return [...prev, {role:"assistant", text:chunk}]
+        setWaitingFirst(false)
+        return [...prev, {role:"assistant", text:chunk, timestamp: new Date().toISOString()}]
       }
       const upd = [...prev]
       upd[upd.length-1].text += chunk
@@ -43,16 +49,33 @@ export default function ChatPage(){
   }
 
   function onMeta(meta:any){
-    // treat metadata as a separate message for now
-    setMessages(prev=>[...prev, {role:"meta", text:JSON.stringify(meta), meta}])
-    if(meta.conversation_id){
-      setConvId(meta.conversation_id)
+    // final structured payload with answer/sources
+    if (meta && (meta.answer || meta.sources)) {
+      setMessages(prev=>{
+        if(prev.length===0) return prev
+        const upd = [...prev]
+        const last = upd[upd.length-1]
+        if(last.role === 'assistant'){
+          last.sources = meta.sources || []
+          last.timestamp = new Date().toISOString()
+        } else {
+          upd.push({role:'assistant', text: meta.answer || '', sources: meta.sources || [], timestamp: new Date().toISOString()})
+        }
+        return upd
+      })
+    } else {
+      // generic metadata event: keep for backwards compatibility
+      setMessages(prev=>[...prev, {role:"meta", text:JSON.stringify(meta), meta}])
+      if(meta.conversation_id){
+        setConvId(meta.conversation_id)
+      }
     }
   }
 
   async function send(){
     if(!input.trim()) return
     setMessages(prev => [...prev, {role:'user', text: input}])
+    setWaitingFirst(true)
     const cancel = streamChat(input, '', {onMessage, onMeta}, convId || undefined)
     abortRef.current = cancel
     setInput("")
@@ -75,9 +98,36 @@ export default function ChatPage(){
           <div className="border border-gray-300 p-4 min-h-[200px]">
             {messages.map((m,i)=>(
               <div key={i} className="mb-2">
-                {m.role === 'meta' ? <em>{m.text}</em> : m.text}
+                {m.role === 'meta' ? (
+                  <em>{m.text}</em>
+                ) : m.role === 'assistant' ? (
+                  <div>
+                    <div className="prose">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">Model: Groq | 384-dim RAG | {m.timestamp ? new Date(m.timestamp).toLocaleString() : ''}</div>
+                    {m.sources && m.sources.length>0 && (
+                      <details className="mt-2 p-2 border rounded">
+                        <summary className="cursor-pointer">Sources ({m.sources.length})</summary>
+                        <ul className="mt-2 list-disc list-inside text-sm">
+                          {m.sources.map((s,si)=> (
+                            <li key={si}>
+                              <strong>{s.document_title || s.document_id}</strong> — chunk {s.chunk_index}: {s.snippet}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                ) : (
+                  m.text
+                )}
               </div>
             ))}
+
+            {waitingFirst && (
+              <div className="mt-2 text-gray-600">Loading response…</div>
+            )}
           </div>
           <div className="mt-3 flex gap-2">
             <input value={input} onChange={e=>setInput(e.target.value)} placeholder="Ask something..." className="flex-1 border p-2 rounded" />

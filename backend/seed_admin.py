@@ -41,11 +41,15 @@ def seed(email: str, password: str):
             print(f"Admin user '{email}' already exists; updating password and flagging admin")
             existing.hashed_password = hash_password(password)
             existing.is_admin = True
+            # ensure credits present
+            if getattr(existing, 'credits', None) is None:
+                existing.credits = 100
         else:
             admin = User(
                 email=email,
                 hashed_password=hash_password(password),
                 is_admin=True,
+                credits=100,
             )
             db.add(admin)
         db.commit()
