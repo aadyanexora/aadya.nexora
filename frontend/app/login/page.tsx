@@ -57,6 +57,9 @@ export default function LoginPage(){
   return (
     <div style={{padding:32}}>
       <h2>Login / Register</h2>
+      <div style={{marginBottom:8}}>
+        <strong>API base:</strong> {typeof window !== 'undefined' && window.location.hostname}
+      </div>
       <div style={{marginBottom:16}}>
         <input 
           placeholder="email" 
@@ -75,6 +78,15 @@ export default function LoginPage(){
         />
       </div>
       {error && <div style={{color:'red', marginBottom:16}}>{error}</div>}
+      <div style={{marginBottom:16}}>
+        <button onClick={async() => {
+          const resp = await fetch((typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000` : '') + '/health');
+          const txt = resp.ok ? await resp.text() : 'error';
+          alert('health: ' + txt);
+        }}>
+          Check API
+        </button>
+      </div>
       <div>
         <button onClick={handleLogin} disabled={loading} style={{padding:8, marginRight:8}}>
           {loading ? "Loading..." : "Login"}

@@ -1,8 +1,18 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-
-console.log('API_BASE configured as:', API_BASE)
+function getApiBase() {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL
+  }
+  if (typeof window !== "undefined") {
+    const proto = window.location.protocol
+    const host = window.location.hostname
+    return `${proto}//${host}:8000`
+  }
+  return "http://localhost:8000"
+}
 
 export async function register(email: string, password: string) {
+  const API_BASE = getApiBase()
+  console.log('register using API_BASE', API_BASE)
   try {
     const res = await fetch(`${API_BASE}/api/auth/register`, {
       method: "POST",
@@ -21,6 +31,8 @@ export async function register(email: string, password: string) {
 }
 
 export async function login(email: string, password: string) {
+  const API_BASE = getApiBase()
+  console.log('login using API_BASE', API_BASE)
   try {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: "POST",
@@ -49,6 +61,7 @@ export function streamChat(
   callbacks: StreamCallbacks,
   conversation_id?: number
 ) {
+  const API_BASE = getApiBase()
   const { onMessage, onMeta } = callbacks
   const controller = new AbortController()
   const body: any = { message }
@@ -87,6 +100,7 @@ export function streamChat(
 }
 
 export async function listConversations(token: string) {
+  const API_BASE = getApiBase()
   const res = await fetch(`${API_BASE}/api/chat/conversations`, {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -94,6 +108,7 @@ export async function listConversations(token: string) {
 }
 
 export async function getHistory(token: string, conversation_id: number) {
+  const API_BASE = getApiBase()
   const res = await fetch(`${API_BASE}/api/chat/history/${conversation_id}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -101,6 +116,7 @@ export async function getHistory(token: string, conversation_id: number) {
 }
 
 export async function listDocuments(token: string) {
+  const API_BASE = getApiBase()
   const res = await fetch(`${API_BASE}/api/admin/documents`, {
     headers: { Authorization: `Bearer ${token}` },
   })
