@@ -1,21 +1,41 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
+console.log('API_BASE configured as:', API_BASE)
+
 export async function register(email: string, password: string) {
-  const res = await fetch(`${API_BASE}/api/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  })
-  return res.json()
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+      return err
+    }
+    return res.json()
+  } catch (error: any) {
+    console.error('Register fetch error:', error)
+    return { detail: error?.message || 'Failed to fetch' }
+  }
 }
 
 export async function login(email: string, password: string) {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  })
-  return res.json()
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+      return err
+    }
+    return res.json()
+  } catch (error: any) {
+    console.error('Login fetch error:', error)
+    return { detail: error?.message || 'Failed to fetch' }
+  }
 }
 
 interface StreamCallbacks {
