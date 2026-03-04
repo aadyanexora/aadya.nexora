@@ -27,13 +27,20 @@ Key Features:
 - Rate limiting via slowapi (10 requests/min on chat streaming).
 - Health endpoint (/health) and Docker-compose service healthchecks.
 - Multi-stage Dockerfiles for lean production images; Torch 2.0 CPU installed.
-- Alembic migration framework initialized with an initial migration script.
+- Alembic migration framework initialized with an initial migration script.  
+  * env.py now adjusts `sys.path` for module imports and overrides
+    `sqlalchemy.url` using the `DATABASE_URL` env var to avoid
+    interpolation errors when running inside Docker.
+
 
 Development Notes:
 - Logging config moved to `app/core/logging.py`.
 - Rate limiter configured in `main.py`; chat route decorated with limiter.
 - Frontend styled using Tailwind; chat and dashboard pages upgraded.
-- Docker-compose includes volumes for Postgres and FAISS persistence.
+- Docker-compose includes volumes for Postgres and FAISS persistence.  
+  * Removed obsolete top-level `version` key to silence warnings from
+    newer Docker Compose releases.
+
 - Additional tooling: python-multipart, slowapi, alembic added to requirements.
 
 Next Improvements:

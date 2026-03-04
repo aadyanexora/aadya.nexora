@@ -86,3 +86,13 @@ def list_documents(user: User = Depends(admin_required), db: Session = Depends(g
             }
         )
     return out
+
+
+@router.get('/users')
+def list_users(user: User = Depends(admin_required), db: Session = Depends(get_db)):
+    """Admin-only endpoint to return all registered users."""
+    users = db.query(User).all()
+    return [
+        {"id": u.id, "email": u.email, "is_admin": u.is_admin, "created_at": u.created_at.isoformat()} 
+        for u in users
+    ]

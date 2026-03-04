@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = "admin@example.com"
     ADMIN_PASSWORD: str = "admin123"
 
+    # test user credentials (non-admin)
+    DEFAULT_USER_EMAIL: str = "user@example.com"
+    DEFAULT_USER_PASSWORD: str = "password"
+
     class Config:
         env_file = ".env"
 
