@@ -102,6 +102,19 @@ def try_request():
         print(f"Exception during streaming chat: {exc}")
     log_if_server_error(stream_resp)
 
+    # F) exercise refresh token
+    if token:
+        print("\n========== POST /api/auth/refresh ==========")
+        r = do_request("post", "/api/auth/refresh", json={"refresh_token": token})
+        if r is not None and r.status_code == 200:
+            token = r.json().get("access_token")
+            headers = {"Authorization": f"Bearer {token}"}
+            print("refresh succeeded, new access token obtained")
+    # G) logout
+    if token:
+        print("\n========== POST /api/auth/logout ==========")
+        do_request("post", "/api/auth/logout", json={"refresh_token": token})
+
 
 if __name__ == '__main__':
     try_request()

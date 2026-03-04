@@ -13,8 +13,7 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 import uuid
 
 # rate limiting
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.core.limiter import limiter
 
 logger = get_logger(__name__)
 
@@ -22,8 +21,7 @@ logger = get_logger(__name__)
 REQUEST_COUNT = Counter("app_requests_total", "Total HTTP requests", ["method", "endpoint"])
 REQUEST_LATENCY = Histogram("app_request_latency_seconds", "Request latency", ["endpoint"])
 
-# initialize limiter
-limiter = Limiter(key_func=get_remote_address)
+# limiter is already configured in core/limiter and imported above
 
 app = FastAPI(title="Aadya - Nexora AI")
 
@@ -56,6 +54,21 @@ async def add_request_id_and_metrics(request: Request, call_next):
     REQUEST_COUNT.labels(request.method, request.url.path).inc()
     REQUEST_LATENCY.labels(request.url.path).observe(latency)
     response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.middleware("http")
+async def log_failed_auth(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code == 401:
+        logger.warning(
+            "authentication failure",
+            extra={
+                "path": request.url.path,
+                "client": request.client.host,
+                "request_id": getattr(request.state, "request_id", ""),
+            },
+        )
     return response
 
 

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from app.core.security import create_access_token
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -20,6 +21,10 @@ ADMIN_PASSWORD = "admin123"
 @router.post("/login", response_model=LoginResponse)
 def admin_login(login: LoginRequest):
     if login.username == ADMIN_USERNAME and login.password == ADMIN_PASSWORD:
-        # generate a fake token for testing
-        return {"access_token": "test_admin_token"}
+        # issue a real JWT rather than a hard‑coded string
+        access_token = create_access_token(
+            {"sub": login.username, "role": "admin"},
+            expires_delta=60,
+        )
+        return {"access_token": access_token, "token_type": "bearer"}
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")

@@ -20,14 +20,20 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_access_token(subject: str, expires_delta: int = 60 * 24 * 7):
+def create_access_token(data: dict, expires_delta: int = 15):
+    """Create a signed JWT.
+
+    * ``data`` should be a dictionary of claims (e.g. ``{"sub": ..., "role": ...}``).
+    * ``expires_delta`` is minutes until expiration (default 15 minutes).
+    The function will copy ``data`` and add ``iat``/``exp`` timestamps.
+    """
     now = datetime.utcnow()
-    payload = {
-        "sub": subject,
+    to_encode = data.copy()
+    to_encode.update({
         "iat": now,
         "exp": now + timedelta(minutes=expires_delta),
-    }
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+    })
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
 def decode_access_token(token: str):

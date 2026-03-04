@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     DEFAULT_USER_EMAIL: str = "user@example.com"
     DEFAULT_USER_PASSWORD: str = "password"
 
+    # cost per token for each model, used to estimate billing
+    MODEL_PRICING: dict = {"llama-3.1-8b-instant": 0.0001}
+
+    # Authentication
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
     class Config:
         env_file = ".env"
 

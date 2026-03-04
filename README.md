@@ -58,35 +58,73 @@ docker exec aadyanexora-backend-1 python -m app.seed_admin
 ## Features & API Endpoints
 
 ### Authentication
-- `POST /api/auth/register` – create a user and return JWT (optional).
-- `POST /api/auth/login` – obtain JWT for existing user (optional).
-- `GET /api/auth/me` – returns current user info when authenticated.
+- `POST /api/auth/register` – create a user and return **access** + **refresh**
+  tokens.
+- `POST /api/auth/login` – obtain access/refresh tokens for existing user.
+- `POST /api/auth/refresh` – rotate a refresh token and receive a new access
+  token (and new refresh token).
+- `POST /api/auth/logout` – revoke a refresh token and prevent further use.
+- `GET /api/auth/me` – returns current user info when authenticated, including
+  `is_admin` and remaining `credits`.
 
-JWT tokens use `SECRET_KEY` and are accepted on endpoints that support them, but
-chat endpoints no longer require authentication in order to function.
+JWT access tokens are short-lived (15 min by default) and use `SECRET_KEY`.
+Refresh tokens expire after 7 days (configurable via settings) and are stored
+hashed in the database; only the raw token is ever returned to clients.  
+Invalid or expired access/refresh tokens result in a 401 response.  Tokens
+carry a `role` claim (`admin` for administrators) used by protected routes.
+**Chat endpoints now require a valid access token**; unauthenticated
+requests will receive 401.
+
+#### Credit system
+New users are granted 1000 credits by default. Each chat request consumes
+credits equal to the number of tokens used (input + output) at the rate
+specified in `MODEL_PRICING` settings. Credits and usage are deducted **only
+after** a successful LLM response; if a query would drive the balance below
+zero, a 402 `Payment Required` is returned after generation. Administrators
+can view and adjust credit balances via the admin API.
 
 ### Chat & RAG
-- `POST /api/chat/stream` – protected endpoint accepting `message` and optional `conversation_id`.
+- `POST /api/chat/stream` – **protected endpoint requiring a valid JWT** and
+  accepting `message` and optional `conversation_id`.
   * Saves user message to PostgreSQL.
-  * Performs retrieval-augmented generation by embedding query via the locally-loaded
-    `SentenceTransformer` model (`all-MiniLM-L6-v2`, 384‑dim), searching the FAISS index,
-    and streaming a response from the Groq API.
+  * Performs retrieval-augmented generation by embedding query via the
+    locally-loaded `SentenceTransformer` model (`all-MiniLM-L6-v2`, 384‑dim),
+    searching the FAISS index, and streaming a response from the Groq API.
+  * Returns the new conversation id in the first SSE event along with a
+    `context_meta` array describing which document chunks were retrieved.
+  * Final SSE event includes a JSON object with the full answer and a
+    `sources` list; footnotes are appended to the answer text.
   * Assistant replies saved to DB as well.
+  * Embedding and retrieval timings are logged for observability.
 
 > **Embedding dimension:** updated to 384 after switching from OpenAI.
 
 
 ### Admin
 - `POST /api/admin/ingest` – ingest arbitrary text documents (admin only).
-  This endpoint is **not linked from the frontend**, keeping the UI clean.
+  * Accepts a `file` field (PDF or plain text) and an optional `metadata`
+    JSON string with `source`, `filename`, and `page` values.
+  * Ingestion performs automatic chunking, embedding, and updates the FAISS
+    index persistently; new columns are recorded in PostgreSQL.
+  * The route currently expects multipart/form-data; JSON body ingestion
+    will be re‑enabled soon.  This endpoint is **not linked from the frontend**
+    by default.
+- `GET /api/admin/users` – list registered users along with `credits`,
+  `total_tokens_used`, and `total_cost`.
+- `POST /api/admin/users/{user_id}/topup` – add credits to a user's account.
+  This enables manual billing or promotional top‑ups.
 
 ### Database
-- PostgreSQL database with tables for `users`, `conversations`, `messages`, and `documents`.  Set `DATABASE_URL` appropriately; an example env file is provided.
+- PostgreSQL database with tables for `users`, `conversations`, `messages`,
+  `documents` and `document_chunks`.  The latter now includes `source`,
+  `filename`, and `page` columns; see migration `0003_add_chunk_metadata.py`.
+  Set `DATABASE_URL` appropriately; an example env file is provided.
 - You can override `DATABASE_URL` to point at another database if desired.
 - SQLAlchemy ORM with session management in `app/db`.
 
 ### Vector Store
-- FAISS used locally to store and query embeddings.
+- FAISS used locally to store and query embeddings; hits now return
+  associated metadata (`source`, `filename`, `page`).
 - Embeddings generated locally using the `sentence-transformers/all-MiniLM-L6-v2` model.
 - Index persisted to disk under configured `FAISS_DIR`.  If the database is cleared,
   stale index files are removed automatically on startup (see `app/main.py`).

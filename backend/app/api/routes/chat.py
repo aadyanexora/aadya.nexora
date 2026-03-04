@@ -15,11 +15,13 @@ import json
 import time
 
 # rate limiter import
-from slowapi import Limiter
 from fastapi import Request
+from app.core.config import settings
+
+# shared limiter instance
+from app.core.limiter import limiter
 
 router = APIRouter()
-limiter = Limiter(key_func=lambda request: request.client.host)
 
 
 class ChatIn(BaseModel):
@@ -28,7 +30,7 @@ class ChatIn(BaseModel):
 
 
 def get_current_user_optional(authorization: str = Header(None)):
-    # if token provided, decode it; otherwise return None
+    # if token provided decode it; otherwise return None
     if not authorization:
         return None
     try:
@@ -39,17 +41,48 @@ def get_current_user_optional(authorization: str = Header(None)):
         return None
 
 
+def get_current_user(request: Request, authorization: str = Header(...)) -> dict:
+    """Dependency that returns the decoded token payload.
+
+    Raises a 401 HTTPException if the header is missing or the token is invalid.
+    Also stores a numeric ``user_id`` on the request state for rate limiting.
+    """
+    token = authorization.split(" ")[-1]
+    data = decode_access_token(token)  # will raise 401 on failure
+    # attempt to parse numeric id for convenience
+    try:
+        uid = int(data.get("sub"))
+    except Exception:
+        uid = None
+    request.state.user_id = uid
+    return data
+
+
+def _parse_user_id(sub: str | None) -> int | None:
+    """Return integer ID if ``sub`` looks numeric, otherwise ``None``."""
+    if not sub:
+        return None
+    try:
+        return int(sub)
+    except (ValueError, TypeError):
+        return None
+
+
 @router.post("/stream")
 @limiter.limit("10/minute")
 def chat_stream(
     request: Request,
-    payload: ChatIn, db: Session = Depends(get_db), user_id: Optional[str] = Depends(get_current_user_optional)
+    payload: ChatIn,
+    db: Session = Depends(get_db),
+    user_payload: dict = Depends(get_current_user),
 ):
+    # parse user id once
+    user_id = _parse_user_id(user_payload.get("sub")) if user_payload else None
     # Ensure conversation
     conv_id = payload.conversation_id
     if not conv_id:
-        # when there is no user, store user_id as None or 0
-        conv = Conversation(user_id=int(user_id) if user_id else None)
+        # when there is no conversation, create one; use parsed user id
+        conv = Conversation(user_id=user_id)
         db.add(conv)
         db.commit()
         db.refresh(conv)
@@ -58,7 +91,7 @@ def chat_stream(
     # Save user message
     user_msg = Message(
         conversation_id=conv_id,
-        user_id=int(user_id) if user_id else None,
+        user_id=_parse_user_id(user_payload.get("sub")) if user_payload else None,
         role="user",
         content=payload.message,
     )
@@ -77,30 +110,37 @@ def chat_stream(
 
     rag = RAGService()
     hits = rag.search(payload.message, top_k=5)
-    # hits -> list of (chunk_content, doc_id, chunk_index, score)
+    # hits -> list of dicts with content, document_id, chunk_index, score, source, filename, page
 
     contexts: List[str] = []
     if history_texts:
         contexts.extend(history_texts)
     chunk_meta = []
-    for text, doc_id, chunk_idx, score in hits:
-        contexts.append(f"[doc {doc_id} chunk {chunk_idx}] {text}")
-        chunk_meta.append({"doc_id": doc_id, "chunk_index": chunk_idx, "score": score})
+    for h in hits:
+        contexts.append(h["content"])
+        chunk_meta.append(
+            {
+                "document_id": h["document_id"],
+                "chunk_index": h["chunk_index"],
+                "score": h["score"],
+                "source": h.get("source"),
+                "filename": h.get("filename"),
+                "page": h.get("page"),
+            }
+        )
 
     # build structured citations list before streaming
     citations = []
     if hits:
-        # fetch document titles
-        doc_ids = list({doc_id for _, doc_id, _, _ in hits})
-        docs = {d.id: d for d in db.query(Document).filter(Document.id.in_(doc_ids)).all()}
-        for text, doc_id, chunk_idx, score in hits:
-            doc = docs.get(doc_id)
+        for idx, h in enumerate(hits, start=1):
             citations.append(
                 {
-                    "document_id": doc_id,
-                    "document_title": doc.name if doc else None,
-                    "chunk_index": chunk_idx,
-                    "snippet": (text[:300] + "...") if len(text) > 300 else text,
+                    "id": idx,
+                    "source": h.get("source"),
+                    "filename": h.get("filename"),
+                    "page": h.get("page"),
+                    "score": h.get("score"),
+                    "snippet": (h["content"][:300] + "...") if len(h["content"]) > 300 else h["content"],
                 }
             )
 
@@ -117,32 +157,57 @@ def chat_stream(
     db.add(assistant_msg)
     db.commit()
 
-    # deduct credits if user present
-    try:
-        if user_id:
-            u = db.query(User).filter(User.id == int(user_id)).first()
+    # credit bookkeeping and usage logging happen only after generation succeeded
+    if user_id:
+        try:
+            u = db.query(User).filter(User.id == user_id).first()
             if u:
-                if (u.credits or 0) <= 0:
+                # compute cost based on pricing configuration
+                cost_per = settings.MODEL_PRICING.get(openai.chat_model, 0.0)
+                cost = (tokens_used or 0) * cost_per
+
+                # ensure enough credits remain
+                remaining = (u.credits or 0) - (tokens_used or 0)
+                if remaining < 0:
                     return JSONResponse(status_code=402, content={"detail": "Insufficient credits"})
-                u.credits = (u.credits or 0) - 1
+
+                # deduct tokens and update aggregates
+                u.credits = remaining
+                u.total_tokens_used = (u.total_tokens_used or 0) + (tokens_used or 0)
+                u.total_cost = (u.total_cost or 0) + cost
                 db.add(u)
                 db.commit()
-    except Exception:
-        # don't fail the request on credit bookkeeping errors
-        db.rollback()
 
-    # log usage
-    try:
-        ul = UsageLog(
-            user_id=int(user_id) if user_id else None,
-            endpoint="/api/chat/stream",
-            tokens_used=tokens_used,
-            response_time_ms=elapsed_ms,
-        )
-        db.add(ul)
-        db.commit()
-    except Exception:
-        db.rollback()
+                # log the usage event
+                try:
+                    ul = UsageLog(
+                        user_id=user_id,
+                        tokens_used=tokens_used,
+                        cost=cost,
+                        model_name=openai.chat_model,
+                    )
+                    db.add(ul)
+                    db.commit()
+                except Exception:
+                    db.rollback()
+        except Exception:
+            # don't let bookkeeping failures break the chat flow
+            db.rollback()
+    else:
+        # log anonymous usage as well (no user_id)
+        try:
+            cost_per = settings.MODEL_PRICING.get(openai.chat_model, 0.0)
+            cost = (tokens_used or 0) * cost_per
+            ul = UsageLog(
+                user_id=None,
+                tokens_used=tokens_used,
+                cost=cost,
+                model_name=openai.chat_model,
+            )
+            db.add(ul)
+            db.commit()
+        except Exception:
+            db.rollback()
 
     def event_stream():
         # send conversation id for client to associate
@@ -153,7 +218,18 @@ def chat_stream(
             yield f"data: {chunk}\n\n"
 
         # final structured citation payload (kept at end)
-        final = {"answer": assistant_text, "sources": citations}
+        # append numbered footnotes to the answer text
+        answer_text = assistant_text
+        if citations:
+            footnotes = []
+            for c in citations:
+                label = c.get('source') or c.get('filename') or 'unknown'
+                page = c.get('page')
+                if page is not None:
+                    label = f"{label} Page {page}"
+                footnotes.append(f"[{c['id']}] {label}")
+            answer_text = answer_text + "\n\n" + "\n".join(footnotes)
+        final = {"answer": answer_text, "sources": citations}
         yield f"data: {json.dumps(final)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

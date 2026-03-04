@@ -3,10 +3,19 @@ from app.services.openai_service import OpenAIService
 from app.services.rag_service import RAGService
 from app.db.session import SessionLocal
 from sqlalchemy import text
+import time
+
+# optional PDF extraction library; will be imported lazily in helper
+try:
+    from PyPDF2 import PdfReader
+except ImportError:
+    PdfReader = None
 
 
 # simple whitespace-based chunker; approximates token count
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+# chunk size and overlap can be adjusted via settings if desired
+
+def chunk_text(text: str, chunk_size: int = 700, overlap: int = 100) -> List[str]:
     tokens = text.split()
     if not tokens:
         return []
@@ -29,40 +38,62 @@ class IngestionService:
         self.logger = logging.getLogger(__name__)
 
     def ingest_texts(self, texts: List[str], names: Optional[List[str]] = None):
-        """Persist incoming texts (and optional names) into documents & chunks then embed.
+        """Legacy wrapper keeping same signature as before."""
+        docs = []
+        for idx, t in enumerate(texts):
+            docs.append({
+                "text": t,
+                "source": names[idx] if names and idx < len(names) else None,
+                "filename": names[idx] if names and idx < len(names) else None,
+                "page": None,
+            })
+        return self.ingest_documents(docs)
 
-        `names` corresponds to each text and may be a filename or other source identifier.
+    def ingest_documents(self, docs: List[dict]):
+        """Process a list of documents with metadata.
+
+        Each entry in ``docs`` should be a dict containing at least:
+            - text: the raw string to ingest
+        Optional keys are ``source`` (identifier), ``filename`` and ``page``.
         """
         self.logger.info("starting ingestion", extra={})
         db = SessionLocal()
         try:
             chunk_texts: List[str] = []
             chunk_meta: List[Tuple[int, int]] = []  # (doc_id, chunk_index)
-            for idx, t in enumerate(texts):
-                name = names[idx] if names and idx < len(names) else None
-                # insert document record
+            for doc in docs:
+                text_content = doc.get("text", "")
+                source = doc.get("source")
+                filename = doc.get("filename")
+                page = doc.get("page")
+                # insert document record; store original full text and source
                 res = db.execute(
                     text("INSERT INTO documents (content, name) VALUES (:c, :n) RETURNING id"),
-                    {"c": t, "n": name},
+                    {"c": text_content, "n": source},
                 )
                 doc_id = res.fetchone()[0]
-                self.logger.info(f"persisted document {doc_id}", extra={"name": name})
-                # create chunks
-                chunks = chunk_text(t)
+                self.logger.info(f"persisted document {doc_id}", extra={"source": source, "filename": filename, "page": page})
+                # chunk the text
+                chunks = chunk_text(text_content)
                 for ci, chunk in enumerate(chunks):
                     db.execute(
                         text(
-                            "INSERT INTO document_chunks (document_id, chunk_index, content) VALUES (:d, :ci, :c)"
+                            "INSERT INTO document_chunks "
+                            "(document_id, chunk_index, content, source, filename, page) "
+                            "VALUES (:d, :ci, :c, :s, :f, :p)"
                         ),
-                        {"d": doc_id, "ci": ci, "c": chunk},
+                        {"d": doc_id, "ci": ci, "c": chunk, "s": source, "f": filename, "p": page},
                     )
                     chunk_texts.append(chunk)
                     chunk_meta.append((doc_id, ci))
             db.commit()
-            # now embed chunks in vector store
+            # now embed chunks in vector store; measure time
             if chunk_texts:
-                self.logger.info(f"adding {len(chunk_texts)} vectors to index")
+                self.logger.info(f"embedding {len(chunk_texts)} chunks")
+                start = time.time()
                 self.rag.add_documents(chunk_texts, chunk_meta)
+                elapsed = time.time() - start
+                self.logger.info(f"embeddings generated in {elapsed:.2f}s")
         finally:
             db.close()
             self.logger.info("finished ingestion")

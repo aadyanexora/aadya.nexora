@@ -19,3 +19,7 @@ class DocumentChunk(Base):
     # ordinal index of chunk within document
     chunk_index = Column(Integer, index=True)
     content = Column(Text, nullable=False)
+    # metadata useful for provenance and search
+    source = Column(String, nullable=True)   # e.g. original source identifier
+    filename = Column(String, nullable=True) # upload filename if any
+    page = Column(Integer, nullable=True)    # page number in source document (if applicable)

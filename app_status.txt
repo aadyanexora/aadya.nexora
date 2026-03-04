@@ -16,15 +16,31 @@ Architecture:
 - Frontend: Next.js 14 (App Router, TypeScript) with Tailwind CSS for styling.
 
 Key Features:
-- JWT authentication with admin check.
+- JWT authentication with admin check; tokens include a `role` claim.
+- **Access/refresh token flow:** login/register issues a short‑lived access
+  token (15 min) plus a 7‑day refresh token. Refresh tokens are hashed and
+  stored in `refresh_tokens`; they can be rotated or revoked via
+  `/auth/refresh` and `/auth/logout`.
+- **Credit-based usage tracking:** every user starts with 1000 credits; tokens
+  consumed by chat requests are deducted from this balance. Monthly credit
+  top‑ups and remaining balances are viewable by administrators.
 - Document ingestion with automatic chunking (500-token chunks, 50-token
-  overlap) and metadata tracking.
-- Admin-only ingestion endpoints with payload validation.
+  overlap), metadata tracking (source, filename, page) and PDF/text support.
+- Admin-only ingestion endpoints with multipart/form-data payloads, robust
+  error logging, and optional metadata; JSON body ingestion temporarily
+  reverted during debugging.
+- Alembic migrations `0003_add_chunk_metadata.py` and
+  `0004_add_usage_tracking.py` added for new schema changes.
 - Conversation history persisted; endpoints to list conversations and fetch
   history.
-- Streaming chat endpoint returning conversation and context metadata.
+- Streaming chat endpoint requiring JWT and returning conversation id,
+  `context_meta` array, structured citations (`sources` field) and footnotes.
+  Input + output tokens are counted and logged; cost estimates recorded.
+- Search and retrieval now log embedding and query timings; vector hits return
+  metadata and are persisted in FAISS.
 - Structured logging with request IDs and Prometheus metrics (/metrics).
-- Rate limiting via slowapi (10 requests/min on chat streaming).
+- Rate limiting via slowapi (10 requests/min on chat streaming; keyed per
+  user when authenticated).
 - Health endpoint (/health) and Docker-compose service healthchecks.
 - Multi-stage Dockerfiles for lean production images; Torch 2.0 CPU installed.
 - Alembic migration framework initialized with an initial migration script.  
@@ -44,8 +60,12 @@ Development Notes:
 - Additional tooling: python-multipart, slowapi, alembic added to requirements.
 
 Next Improvements:
+- Add UI/CLI tooling for monitoring and purchasing credits.
+- Re‑enable JSON body ingestion alongside form-data for `/api/admin/ingest`.
+- Add comprehensive unit/integration tests for ingestion, PDF handling,
+  RAG search metadata, chat citation streaming, and credit deductions.
 - Add GPU support or alternative embedding model if needed.
-- Enhance admin UI with file upload.
+- Enhance admin UI with file upload and ingest status tracking.
 - Implement background workers for ingestion and embeddings.
 - Add more observability (Sentry, Grafana dashboard).
 
@@ -58,7 +78,7 @@ Repo housekeeping / Termux move
 
 Instructions for running migrations:
   cd backend
-  alembic upgrade head
+  alembic upgrade head    # includes new migration adding chunk metadata
 
 Notes about Termux:
 - Building heavy native dependencies (Torch, FAISS) is rarely feasible directly
