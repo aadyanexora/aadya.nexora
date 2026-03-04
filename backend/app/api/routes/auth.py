@@ -15,6 +15,8 @@ router = APIRouter()
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str
+    # optional organization name; if omitted a new org will be created per user
+    organization: str | None = None
 
 
 class LoginIn(BaseModel):
@@ -32,16 +34,32 @@ class LogoutIn(BaseModel):
 
 @router.post("/register")
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
+    # ensure unique email
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(email=payload.email, hashed_password=hash_password(payload.password))
+    # determine organization: if provided use or create; otherwise create per-email org
+    org_id = None
+    org_name = payload.organization or f"org-{payload.email}"
+    from app.models.organization import Organization
+    org = db.query(Organization).filter(Organization.name == org_name).first()
+    if not org:
+        org = Organization(name=org_name)
+        db.add(org)
+        db.commit()
+        db.refresh(org)
+    org_id = org.id
+    user = User(
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        organization_id=org_id,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
     role = "admin" if user.is_admin else "user"
     access = create_access_token(
-        {"sub": str(user.id), "role": role},
+        {"sub": str(user.id), "role": role, "org_id": org_id},
         expires_delta=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
     )
     raw_refresh = secrets.token_urlsafe(64)
@@ -59,9 +77,8 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     role = "admin" if user.is_admin else "user"
-    # generate tokens and save refresh
     access = create_access_token(
-        {"sub": str(user.id), "role": role},
+        {"sub": str(user.id), "role": role, "org_id": user.organization_id},
         expires_delta=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
     )
     raw_refresh = secrets.token_urlsafe(64)
@@ -83,7 +100,13 @@ def me(authorization: str | None = Header(None), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == int(user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"id": user.id, "email": user.email, "is_admin": user.is_admin, "credits": getattr(user, 'credits', None)}
+    return {
+        "id": user.id,
+        "email": user.email,
+        "is_admin": user.is_admin,
+        "credits": getattr(user, 'credits', None),
+        "organization_id": user.organization_id,
+    }
 
 
 @router.post("/refresh")
@@ -107,7 +130,7 @@ def refresh_token(payload: RefreshIn, db: Session = Depends(get_db)):
             # issue new tokens
             role = "admin" if user.is_admin else "user"
             access = create_access_token(
-                {"sub": str(user.id), "role": role},
+                {"sub": str(user.id), "role": role, "org_id": user.organization_id},
                 expires_delta=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
             )
             new_refresh = secrets.token_urlsafe(64)

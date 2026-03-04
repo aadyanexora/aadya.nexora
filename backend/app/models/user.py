@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, ForeignKey
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -16,3 +16,4 @@ class User(Base):
     # cumulative usage statistics
     total_tokens_used = Column(Integer, nullable=False, server_default="0")
     total_cost = Column(Float, nullable=False, server_default="0")
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True, nullable=True)  # tenant association

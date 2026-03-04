@@ -20,9 +20,13 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      # production environment should set ENV=PROD; default to DEV for local
+      - ENV=${ENV:-DEV}
     volumes:
       - ./backend/app:/app/app:cached
       - ./backend/alembic:/app/alembic:cached
+      - ./backend/tests:/app/tests:cached
       - faissdata:/app/faiss_data
     ports:
       - "8000:8000"

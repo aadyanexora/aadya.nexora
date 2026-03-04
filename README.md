@@ -59,7 +59,10 @@ docker exec aadyanexora-backend-1 python -m app.seed_admin
 
 ### Authentication
 - `POST /api/auth/register` – create a user and return **access** + **refresh**
-  tokens.
+  tokens.  The request may include an `organization` field (string); if the
+  named organization does not yet exist it will be created.  If omitted a
+  per-user organization is generated automatically.  A token claim
+  `org_id` is added to both access and refresh tokens.
 - `POST /api/auth/login` – obtain access/refresh tokens for existing user.
 - `POST /api/auth/refresh` – rotate a refresh token and receive a new access
   token (and new refresh token).
@@ -68,12 +71,12 @@ docker exec aadyanexora-backend-1 python -m app.seed_admin
   `is_admin` and remaining `credits`.
 
 JWT access tokens are short-lived (15 min by default) and use `SECRET_KEY`.
-Refresh tokens expire after 7 days (configurable via settings) and are stored
-hashed in the database; only the raw token is ever returned to clients.  
-Invalid or expired access/refresh tokens result in a 401 response.  Tokens
-carry a `role` claim (`admin` for administrators) used by protected routes.
-**Chat endpoints now require a valid access token**; unauthenticated
-requests will receive 401.
+Tokens also carry an `org_id` claim which is used by the backend to enforce
+strict tenant isolation.  Refresh tokens expire after 7 days (configurable
+via settings) and are stored hashed in the database; only the raw token is
+ever returned to clients.  Invalid or expired access/refresh tokens result
+in a 401 response.  Tokens carry a `role` claim (`admin` for administrators)
+as well as `org_id`.
 
 #### Credit system
 New users are granted 1000 credits by default. Each chat request consumes
@@ -102,6 +105,8 @@ can view and adjust credit balances via the admin API.
 
 ### Admin
 - `POST /api/admin/ingest` – ingest arbitrary text documents (admin only).
+  Documents are tagged with the administrator's organization; searches and
+  retrievals are limited to the current tenant.
   * Accepts a `file` field (PDF or plain text) and an optional `metadata`
     JSON string with `source`, `filename`, and `page` values.
   * Ingestion performs automatic chunking, embedding, and updates the FAISS
@@ -115,11 +120,20 @@ can view and adjust credit balances via the admin API.
   This enables manual billing or promotional top‑ups.
 
 ### Database
-- PostgreSQL database with tables for `users`, `conversations`, `messages`,
+- PostgreSQL database with tables for `organizations`, `users`,
+  `conversations`, `messages`,
   `documents` and `document_chunks`.  The latter now includes `source`,
   `filename`, and `page` columns; see migration `0003_add_chunk_metadata.py`.
   Set `DATABASE_URL` appropriately; an example env file is provided.
 - You can override `DATABASE_URL` to point at another database if desired.
+
+#### Multi-tenancy
+All user and conversation data is now scoped by `organization_id`.  Users
+belongs to exactly one organization.  Admin APIs operate within the
+caller’s organization unless the administrator’s account has no
+`organization_id` (treating them as a super‑admin).  The `org_id` claim in
+JWTs is used to inject the tenant context; a middleware populates
+`request.state.organization_id` accordingly.
 - SQLAlchemy ORM with session management in `app/db`.
 
 ### Vector Store
@@ -135,10 +149,54 @@ can view and adjust credit balances via the admin API.
 
 ### Docker
 - Compose file configures Postgres, backend, and frontend services with volumes.
+  * During development the backend service also mounts `./backend/alembic` into
+    the container so new migrations appear immediately; this was required to
+    avoid `UndefinedTable` errors when adding the refresh tokens migration.
 - Environment variables injected via `.env`.
 
 ### Environment Variables
 - `GROQ_API_KEY`, `DATABASE_URL`, `SECRET_KEY`, and optional `FAISS_DIR`.
+- `ADMIN_ORG` can be set to assign the seeded admin to a specific organization
+  (omit for a global super-admin).  `DEFAULT_USER_ORG` controls the org of the
+  default non-admin user created at startup.
+- `ENV` determines the runtime environment (DEV, STAGING, PROD).  In production
+  several security features are enabled automatically: HTTPS redirection,
+  strict security headers, and more verbose request logging.  The application
+  will still function if `ENV` is unset, defaulting to `DEV`.
+
+#### Production deployment
+The backend is packaged with a production-ready Dockerfile that launches
+Gunicorn with Uvicorn workers.  Environment variables are read either from a
+`.env` file (development) or from the host/provider environment (Render,
+Railway, AWS, etc.).
+
+Persistent storage for the FAISS directory (`FAISS_DIR`) is required so that
+vector indexes survive restarts; when using Docker a volume such as
+`faissdata` should be mounted.  The accompanying `docker-compose.yml` already
+defines this for local development, and a `docker-compose.prod.yml` can be
+constructed by removing the source mounts and `.env` references.
+
+On startup the FastAPI application will automatically run any pending
+Alembic migrations, create the FAISS directory, and load the index.  A
+shutdown handler persists the index to disk.  Both `/health` (checks DB and
+FAISS) and `/metrics` (Prometheus-compatible counters) are available by
+default, making the service easy to monitor in production.
+
+HTTPS enforcement works either via Starlette's `HTTPSRedirectMiddleware` or by
+honoring the `X-Forwarded-Proto` header when the app is behind a TLS
+terminator (common on cloud platforms).
+
+To deploy on Render/Railway/AWS you generally:
+
+1. Build or pull the Docker image using the provided `Dockerfile`.
+2. Configure environment variables (DATABASE_URL, SECRET_KEY, GROQ_API_KEY,
+   ENV=PROD, etc.) in the platform's settings.
+3. Mount a persistent volume for the FAISS directory (`/app/faiss_data`).
+4. Open port 8000 (or route traffic via the provider's load balancer).
+
+Adjust workers (`-w`) and timeouts as necessary for your load profile.  The
+current default (`2` workers) is suitable for low‑traffic demo deployments.
+
 
 Termux / Android notes
 ----------------------

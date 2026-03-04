@@ -36,7 +36,7 @@ def get_current_user_optional(authorization: str = Header(None)):
     try:
         token = authorization.split(" ")[-1]
         data = decode_access_token(token)
-        return data.get("sub")
+        return data
     except Exception:
         return None
 
@@ -45,7 +45,8 @@ def get_current_user(request: Request, authorization: str = Header(...)) -> dict
     """Dependency that returns the decoded token payload.
 
     Raises a 401 HTTPException if the header is missing or the token is invalid.
-    Also stores a numeric ``user_id`` on the request state for rate limiting.
+    Also stores numeric ``user_id`` and ``organization_id`` on the request state for
+    downstream code (rate limiting, tenant filtering).
     """
     token = authorization.split(" ")[-1]
     data = decode_access_token(token)  # will raise 401 on failure
@@ -55,6 +56,7 @@ def get_current_user(request: Request, authorization: str = Header(...)) -> dict
     except Exception:
         uid = None
     request.state.user_id = uid
+    request.state.organization_id = data.get("org_id")
     return data
 
 
@@ -78,11 +80,19 @@ def chat_stream(
 ):
     # parse user id once
     user_id = _parse_user_id(user_payload.get("sub")) if user_payload else None
+    org_id = user_payload.get("org_id") if user_payload else None
     # Ensure conversation
     conv_id = payload.conversation_id
+    if conv_id:
+        # verify tenant ownership
+        conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+        if not conv:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if org_id is not None and conv.organization_id != org_id:
+            raise HTTPException(status_code=403, detail="Access denied")
     if not conv_id:
-        # when there is no conversation, create one; use parsed user id
-        conv = Conversation(user_id=user_id)
+        # when there is no conversation, create one; use parsed user id and org
+        conv = Conversation(user_id=user_id, organization_id=org_id)
         db.add(conv)
         db.commit()
         db.refresh(conv)
@@ -109,7 +119,7 @@ def chat_stream(
     history_texts = [m.content for m in reversed(history_msgs)]
 
     rag = RAGService()
-    hits = rag.search(payload.message, top_k=5)
+    hits = rag.search(payload.message, top_k=5, org_id=org_id)
     # hits -> list of dicts with content, document_id, chunk_index, score, source, filename, page
 
     contexts: List[str] = []
@@ -185,6 +195,7 @@ def chat_stream(
                         tokens_used=tokens_used,
                         cost=cost,
                         model_name=openai.chat_model,
+                        organization_id=org_id,
                     )
                     db.add(ul)
                     db.commit()
@@ -203,6 +214,7 @@ def chat_stream(
                 tokens_used=tokens_used,
                 cost=cost,
                 model_name=openai.chat_model,
+                organization_id=org_id,
             )
             db.add(ul)
             db.commit()
@@ -236,11 +248,24 @@ def chat_stream(
 
 
 @router.get("/conversations")
-def list_conversations(user_id: Optional[str] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
-    # return all conversations if no user; otherwise filter
+def list_conversations(
+    user_payload: Optional[dict] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    # return all conversations if anonymous; otherwise restrict to the
+    # user's organization (and optionally to their own contributions).
     query = db.query(Conversation)
-    if user_id:
-        query = query.filter(Conversation.user_id == int(user_id))
+    if user_payload:
+        org = user_payload.get("org_id")
+        if org is not None:
+            query = query.filter(Conversation.organization_id == org)
+        # also optionally show only those started by this user
+        try:
+            uid = int(user_payload.get("sub"))
+        except Exception:
+            uid = None
+        if uid is not None:
+            query = query.filter(Conversation.user_id == uid)
     convs = query.all()
     return [
         {"id": c.id, "title": c.title, "created_at": c.created_at.isoformat()}
@@ -250,8 +275,18 @@ def list_conversations(user_id: Optional[str] = Depends(get_current_user_optiona
 
 @router.get("/history/{conv_id}")
 def get_history(
-    conv_id: int, user_id: Optional[str] = Depends(get_current_user_optional), db: Session = Depends(get_db)
+    conv_id: int,
+    user_payload: Optional[dict] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
 ):
+    # ensure conversation belongs to the same organization as caller (if any)
+    conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if user_payload:
+        org = user_payload.get("org_id")
+        if org is not None and conv.organization_id != org:
+            raise HTTPException(status_code=403, detail="Access denied")
     msgs = (
         db.query(Message)
         .filter(Message.conversation_id == conv_id)

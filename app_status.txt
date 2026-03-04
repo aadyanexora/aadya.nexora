@@ -18,9 +18,11 @@ Architecture:
 Key Features:
 - JWT authentication with admin check; tokens include a `role` claim.
 - **Access/refresh token flow:** login/register issues a short‑lived access
-  token (15 min) plus a 7‑day refresh token. Refresh tokens are hashed and
+  token (15 min) plus a 7‑day refresh token. Refresh tokens are hashed (with
+  truncation applied to the raw token to satisfy the 72‑byte limit) and
   stored in `refresh_tokens`; they can be rotated or revoked via
-  `/auth/refresh` and `/auth/logout`.
+  `/auth/refresh` and `/auth/logout`.  The verifier now also truncates
+  incoming tokens so rotation works even on long random strings.
 - **Credit-based usage tracking:** every user starts with 1000 credits; tokens
   consumed by chat requests are deducted from this balance. Monthly credit
   top‑ups and remaining balances are viewable by administrators.
@@ -41,6 +43,12 @@ Key Features:
 - Structured logging with request IDs and Prometheus metrics (/metrics).
 - Rate limiting via slowapi (10 requests/min on chat streaming; keyed per
   user when authenticated).
+- Production hardening features: environment-based settings (`ENV`), HTTPS
+  enforcement (redirect or header check), security headers middleware, and
+  request logging that includes latency, status, and request ID.
+- Health endpoint performs database connectivity check and verifies FAISS
+  index can be loaded; shutdown handler persists index; migrations auto-run
+  on startup.
 - Health endpoint (/health) and Docker-compose service healthchecks.
 - Multi-stage Dockerfiles for lean production images; Torch 2.0 CPU installed.
 - Alembic migration framework initialized with an initial migration script.  
@@ -56,6 +64,9 @@ Development Notes:
 - Docker-compose includes volumes for Postgres and FAISS persistence.  
   * Removed obsolete top-level `version` key to silence warnings from
     newer Docker Compose releases.
+- Added basic pytest suite (tests/test_auth.py) verifying refresh token
+  rotation and logout behavior; the backend container now mounts `./backend/tests`
+  to make development tests accessible.
 
 - Additional tooling: python-multipart, slowapi, alembic added to requirements.
 
@@ -64,6 +75,25 @@ Next Improvements:
 - Re‑enable JSON body ingestion alongside form-data for `/api/admin/ingest`.
 - Add comprehensive unit/integration tests for ingestion, PDF handling,
   RAG search metadata, chat citation streaming, and credit deductions.
+- Expand the test suite to cover document multi-tenancy and search isolation.
+
+New multi-tenant architecture:
+- Added `organizations` table and `organization_id` columns on users,
+  conversations, documents and chunks.
+- JWTs now include `org_id`; access is enforced by middleware and request
+  dependencies.  Admin routes are scoped by organization unless the user has
+  a `NULL` org_id (super-admin).
+- Ingestion service tags documents with org_id; RAG search filters hits
+  to the current organization.
+- `/api/auth/register` accepts an optional `organization` field (new org
+  created if needed).
+- Seed scripts and startup logic create organizations as necessary and
+  support global super-admin via `ADMIN_ORG` env.
+- Added `backend/tests/test_multitenant.py` verifying isolation and
+  admin scoping.
+- New configuration settings `ADMIN_ORG` and `DEFAULT_USER_ORG` allow
+  controlling which organization seeded users belong to; leaving
+  `ADMIN_ORG` unset yields a global super-admin.
 - Add GPU support or alternative embedding model if needed.
 - Enhance admin UI with file upload and ingest status tracking.
 - Implement background workers for ingestion and embeddings.
@@ -78,7 +108,20 @@ Repo housekeeping / Termux move
 
 Instructions for running migrations:
   cd backend
-  alembic upgrade head    # includes new migration adding chunk metadata
+  # apply any outstanding revisions to the database schema
+  alembic upgrade head
+
+  # in this workspace some columns were added manually during
+  # development, which caused Alembic to complain about duplicates when
+  # re‑running the same migration.  If you encounter `DuplicateColumn`
+  # errors, you can mark the database as up‑to‑date instead with:
+  #
+  #     alembic stamp head
+  #
+  # the `0005_add_refresh_tokens` migration creates the new
+  # `refresh_tokens` table; if you stamp head you may need to create this
+  # table manually (see migration file) or revert the stamp and run
+  # `alembic upgrade head` again.
 
 Notes about Termux:
 - Building heavy native dependencies (Torch, FAISS) is rarely feasible directly

@@ -17,7 +17,11 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    # apply same truncation logic as when hashing to ensure long tokens match
+    pw = plain if isinstance(plain, str) else str(plain)
+    if len(pw.encode('utf-8')) > 72:
+        pw = pw[:72]
+    return pwd_context.verify(pw, hashed)
 
 
 def create_access_token(data: dict, expires_delta: int = 15):

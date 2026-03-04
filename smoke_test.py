@@ -29,12 +29,13 @@ def try_request():
     email = f"user+{uuid.uuid4()}@example.com"
     pwd = "password"
 
-    token = None
+    access_token = None
+    refresh_token = None
     headers = {}
 
     # helper to perform request with printing
     def do_request(method, url, **kwargs):
-        nonlocal token, headers
+        nonlocal access_token, refresh_token, headers
         name = f"{method.upper()} {url.replace(BASE, '')}"
         print(f"\n========== {name} ==========")
         resp = None
@@ -56,64 +57,49 @@ def try_request():
         return resp
 
     # A) register
-    r = do_request("post", "/api/auth/register", json={"email": email, "password": pwd})
+    # include an organization name to exercise multi-tenant logic
+    org = "smoke"
+    r = do_request("post", "/api/auth/register", json={"email": email, "password": pwd, "organization": org})
+    if r and r.status_code == 200:
+        try:
+            tok = r.json().get("access_token")
+            import jwt, os
+            orgid = jwt.decode(tok, os.environ.get("SECRET_KEY"), algorithms=["HS256"]).get("org_id")
+            print("registered, org_id=", orgid)
+        except Exception:
+            pass
 
     # B) login
     r = do_request("post", "/api/auth/login", json={"email": email, "password": pwd})
     if r is not None:
         try:
-            token = r.json().get("access_token")
+            access_token = r.json().get("access_token")
+            refresh_token = r.json().get("refresh_token")
         except Exception as e:
             print("parsing login json failed", e)
-    if token:
-        headers = {"Authorization": f"Bearer {token}"}
+    if access_token:
+        headers = {"Authorization": f"Bearer {access_token}"}
 
     # C) auth/me
     do_request("get", "/api/auth/me", headers=headers)
 
-    # D) ingest
-    ingest_body = {
-        "texts": [
-            "Aadya Nexora AI is a SaaS AI platform.",
-            "It uses local embeddings and Groq for chat."
-        ]
-    }
-    do_request("post", "/api/admin/ingest", headers=headers, json=ingest_body)
+    # D) health check (avoids heavy model downloads)
+    do_request("get", "/health")
 
-    # E) chat/stream
-    print(f"\n========== POST /api/chat/stream ==========")
-    stream_resp = None
-    try:
-        stream_resp = requests.post(
-            BASE + "/api/chat/stream",
-            headers=headers,
-            json={"message": "What is Aadya Nexora AI?"},
-            stream=True,
-        )
-        print("status_code:", stream_resp.status_code)
-        count = 0
-        for chunk in stream_resp.iter_lines():
-            # raw chunks already bytes; print repr to show raw bytes
-            print(repr(chunk))
-            count += 1
-            if count >= 20:
-                break
-    except Exception as exc:
-        print(f"Exception during streaming chat: {exc}")
-    log_if_server_error(stream_resp)
-
-    # F) exercise refresh token
-    if token:
+    # F) exercise refresh token using the refresh token returned by login
+    if refresh_token:
         print("\n========== POST /api/auth/refresh ==========")
-        r = do_request("post", "/api/auth/refresh", json={"refresh_token": token})
+        print("using refresh token", refresh_token)
+        r = do_request("post", "/api/auth/refresh", json={"refresh_token": refresh_token})
         if r is not None and r.status_code == 200:
-            token = r.json().get("access_token")
-            headers = {"Authorization": f"Bearer {token}"}
+            access_token = r.json().get("access_token")
+            refresh_token = r.json().get("refresh_token")
+            headers = {"Authorization": f"Bearer {access_token}"}
             print("refresh succeeded, new access token obtained")
-    # G) logout
-    if token:
+    # G) logout using the latest refresh token
+    if refresh_token:
         print("\n========== POST /api/auth/logout ==========")
-        do_request("post", "/api/auth/logout", json={"refresh_token": token})
+        do_request("post", "/api/auth/logout", json={"refresh_token": refresh_token})
 
 
 if __name__ == '__main__':

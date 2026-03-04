@@ -30,6 +30,7 @@ def admin_required(payload: dict = Depends(get_current_user), db: Session = Depe
             def __init__(self):
                 self.id = None
                 self.is_admin = True
+                self.organization_id = None
         return _DummyUser()
     if not user.is_admin:
         raise HTTPException(

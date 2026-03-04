@@ -20,6 +20,7 @@ sys.path.insert(0, base_dir)
 
 from app.db import session as db_session
 from app.models.user import User
+from app.models.organization import Organization
 from app.core.security import hash_password
 
 
@@ -36,11 +37,24 @@ def ensure_tables():
 def seed(email: str, password: str):
     db = db_session.SessionLocal()
     try:
+        # determine org assignment for admin
+        org_env = os.environ.get("ADMIN_ORG")
+        org_id = None
+        if org_env:
+            org = db.query(Organization).filter(Organization.name == org_env).first()
+            if not org:
+                org = Organization(name=org_env)
+                db.add(org)
+                db.commit()
+                db.refresh(org)
+            org_id = org.id
+
         existing = db.query(User).filter(User.email == email).first()
         if existing:
             print(f"Admin user '{email}' already exists; updating password and flagging admin")
             existing.hashed_password = hash_password(password)
             existing.is_admin = True
+            existing.organization_id = org_id
             # ensure credits present
             if getattr(existing, 'credits', None) is None:
                 existing.credits = 100
@@ -50,6 +64,7 @@ def seed(email: str, password: str):
                 hashed_password=hash_password(password),
                 is_admin=True,
                 credits=100,
+                organization_id=org_id,
             )
             db.add(admin)
         db.commit()

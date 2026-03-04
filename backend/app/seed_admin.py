@@ -15,6 +15,7 @@ import os
 
 from app.db import session as db_session
 from app.models.user import User
+from app.models.organization import Organization
 from app.core.security import hash_password
 
 
@@ -32,15 +33,28 @@ def seed(email: str, password: str):
     db = db_session.SessionLocal()
     try:
         existing = db.query(User).filter(User.email == email).first()
+        # determine org assignment for admin (optional superadmin)
+        org_env = os.environ.get("ADMIN_ORG")
+        org_id = None
+        if org_env:
+            org = db.query(Organization).filter(Organization.name == org_env).first()
+            if not org:
+                org = Organization(name=org_env)
+                db.add(org)
+                db.commit()
+                db.refresh(org)
+            org_id = org.id
         if existing:
             print(f"Admin user '{email}' already exists; updating password and flagging admin")
             existing.hashed_password = hash_password(password)
             existing.is_admin = True
+            existing.organization_id = org_id
         else:
             admin = User(
                 email=email,
                 hashed_password=hash_password(password),
                 is_admin=True,
+                organization_id=org_id,
             )
             db.add(admin)
         db.commit()

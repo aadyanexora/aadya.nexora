@@ -37,8 +37,11 @@ class IngestionService:
         self.rag = RAGService()
         self.logger = logging.getLogger(__name__)
 
-    def ingest_texts(self, texts: List[str], names: Optional[List[str]] = None):
-        """Legacy wrapper keeping same signature as before."""
+    def ingest_texts(self, texts: List[str], names: Optional[List[str]] = None, organization_id: int | None = None):
+        """Legacy wrapper keeping same signature as before.
+
+        ``organization_id`` will be passed through to each document chunk.
+        """
         docs = []
         for idx, t in enumerate(texts):
             docs.append({
@@ -46,10 +49,11 @@ class IngestionService:
                 "source": names[idx] if names and idx < len(names) else None,
                 "filename": names[idx] if names and idx < len(names) else None,
                 "page": None,
+                "organization_id": organization_id,
             })
-        return self.ingest_documents(docs)
+        return self.ingest_documents(docs, organization_id=organization_id)
 
-    def ingest_documents(self, docs: List[dict]):
+    def ingest_documents(self, docs: List[dict], organization_id: int | None = None):
         """Process a list of documents with metadata.
 
         Each entry in ``docs`` should be a dict containing at least:
@@ -68,8 +72,8 @@ class IngestionService:
                 page = doc.get("page")
                 # insert document record; store original full text and source
                 res = db.execute(
-                    text("INSERT INTO documents (content, name) VALUES (:c, :n) RETURNING id"),
-                    {"c": text_content, "n": source},
+                    text("INSERT INTO documents (content, name, organization_id) VALUES (:c, :n, :org) RETURNING id"),
+                    {"c": text_content, "n": source, "org": organization_id},
                 )
                 doc_id = res.fetchone()[0]
                 self.logger.info(f"persisted document {doc_id}", extra={"source": source, "filename": filename, "page": page})
@@ -79,10 +83,10 @@ class IngestionService:
                     db.execute(
                         text(
                             "INSERT INTO document_chunks "
-                            "(document_id, chunk_index, content, source, filename, page) "
-                            "VALUES (:d, :ci, :c, :s, :f, :p)"
+                            "(document_id, chunk_index, content, source, filename, page, organization_id) "
+                            "VALUES (:d, :ci, :c, :s, :f, :p, :org)"
                         ),
-                        {"d": doc_id, "ci": ci, "c": chunk, "s": source, "f": filename, "p": page},
+                        {"d": doc_id, "ci": ci, "c": chunk, "s": source, "f": filename, "p": page, "org": organization_id},
                     )
                     chunk_texts.append(chunk)
                     chunk_meta.append((doc_id, ci))

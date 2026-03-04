@@ -31,7 +31,7 @@ class RAGService:
         self.logger.info(f"generated {len(texts)} embeddings in {elapsed:.2f}s")
 
     def search(
-        self, query: str, top_k: int = 5
+        self, query: str, top_k: int = 5, org_id: int | None = None
     ) -> List[dict]:
         """Return list of results with content, metadata and score.
 
@@ -54,12 +54,21 @@ class RAGService:
         try:
             start = time.time()
             for doc_id, chunk_idx, score in hits:
-                stmt = text(
-                    "SELECT content, source, filename, page "
-                    "FROM document_chunks "
-                    "WHERE document_id = :d AND chunk_index = :ci"
-                )
-                row = db.execute(stmt, {"d": doc_id, "ci": chunk_idx}).fetchone()
+                if org_id is not None:
+                    stmt = text(
+                        "SELECT content, source, filename, page "
+                        "FROM document_chunks "
+                        "WHERE document_id = :d AND chunk_index = :ci "
+                        "AND organization_id = :org"
+                    )
+                    row = db.execute(stmt, {"d": doc_id, "ci": chunk_idx, "org": org_id}).fetchone()
+                else:
+                    stmt = text(
+                        "SELECT content, source, filename, page "
+                        "FROM document_chunks "
+                        "WHERE document_id = :d AND chunk_index = :ci"
+                    )
+                    row = db.execute(stmt, {"d": doc_id, "ci": chunk_idx}).fetchone()
                 if row:
                     content, source, filename, page = row
                     results.append({

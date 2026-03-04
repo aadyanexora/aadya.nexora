@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # test user credentials (non-admin)
     DEFAULT_USER_EMAIL: str = "user@example.com"
     DEFAULT_USER_PASSWORD: str = "password"
+    # optional organization names used by seeding scripts; if not provided
+    # the admin will be global (organization_id=None) and the default user
+    # gets a per-email org.
+    ADMIN_ORG: str | None = None
+    DEFAULT_USER_ORG: str | None = None
 
     # cost per token for each model, used to estimate billing
     MODEL_PRICING: dict = {"llama-3.1-8b-instant": 0.0001}
@@ -31,6 +36,18 @@ class Settings(BaseSettings):
     # Authentication
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    # runtime environment: DEV, STAGING, or PROD. Used for toggling
+    # security behavior (HTTPS redirects, CORS, headers, etc.).
+    ENV: str = "DEV"
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENV.upper() == "PROD"
+
+    @property
+    def is_staging(self) -> bool:
+        return self.ENV.upper() == "STAGING"
 
     class Config:
         env_file = ".env"

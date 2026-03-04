@@ -9,6 +9,7 @@ class Conversation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True, nullable=True)  # tenant association
     title = Column(String, default="Conversation")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

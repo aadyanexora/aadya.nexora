@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, String
+from sqlalchemy import Column, Integer, Text, String, ForeignKey
 from app.db.base import Base
 
 
@@ -9,6 +9,7 @@ class Document(Base):
     content = Column(Text, nullable=False)
     # optional human-readable name or source identifier (e.g. filename)
     name = Column(String, nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True, nullable=True)  # tenant association
 
 
 class DocumentChunk(Base):
@@ -23,3 +24,4 @@ class DocumentChunk(Base):
     source = Column(String, nullable=True)   # e.g. original source identifier
     filename = Column(String, nullable=True) # upload filename if any
     page = Column(Integer, nullable=True)    # page number in source document (if applicable)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True, nullable=True)  # tenant association

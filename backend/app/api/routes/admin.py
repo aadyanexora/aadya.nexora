@@ -23,15 +23,27 @@ def analytics_summary(user: User = Depends(admin_required), db: Session = Depend
     from app.models.chat import Conversation, Message
     from app.models.usage_log import UsageLog
 
-    total_users = db.query(func.count(User.id)).scalar() or 0
-    total_conversations = db.query(func.count(Conversation.id)).scalar() or 0
-    total_messages = db.query(func.count(Message.id)).scalar() or 0
+    org_id = getattr(user, "organization_id", None)
+    user_q = db.query(User)
+    conv_q = db.query(Conversation)
+    msg_q = db.query(Message)
+    if org_id is not None:
+        user_q = user_q.filter(User.organization_id == org_id)
+        conv_q = conv_q.filter(Conversation.organization_id == org_id)
+        msg_q = msg_q.join(Conversation, Conversation.id == Message.conversation_id).filter(Conversation.organization_id == org_id)
+    total_users = user_q.with_entities(func.count(User.id)).scalar() or 0
+    total_conversations = conv_q.with_entities(func.count(Conversation.id)).scalar() or 0
+    total_messages = msg_q.with_entities(func.count(Message.id)).scalar() or 0
     # compute simple usage metrics
     avg_cost = db.query(func.avg(UsageLog.cost)).scalar() or 0
     # requests in last 24h
     from datetime import datetime, timedelta
     cutoff = datetime.utcnow() - timedelta(hours=24)
-    total_requests_24h = db.query(func.count(UsageLog.id)).filter(UsageLog.created_at >= cutoff).scalar() or 0
+    log_q = db.query(func.count(UsageLog.id)).filter(UsageLog.created_at >= cutoff)
+    if org_id is not None:
+        # restrict logs to users in same org
+        log_q = log_q.join(User, User.id == UsageLog.user_id).filter(User.organization_id == org_id)
+    total_requests_24h = log_q.scalar() or 0
 
     return {
         "total_users": int(total_users),
@@ -98,7 +110,8 @@ async def ingest(
             raise HTTPException(status_code=400, detail="No content provided")
 
         service = IngestionService()
-        service.ingest_documents(docs)
+        org_id = getattr(user, "organization_id", None)
+        service.ingest_documents(docs, organization_id=org_id)
         return {"status": "ok", "ingested": len(docs)}
 
     except Exception as exc:
@@ -139,7 +152,11 @@ async def ingest(
 @router.get("/documents")
 def list_documents(user: User = Depends(admin_required), db: Session = Depends(get_db)):
     from app.models.document import Document, DocumentChunk
-    docs = db.query(Document).all()
+    org_id = getattr(user, "organization_id", None)
+    query = db.query(Document)
+    if org_id is not None:
+        query = query.filter(Document.organization_id == org_id)
+    docs = query.all()
     out = []
     for d in docs:
         chunks = (
@@ -178,7 +195,11 @@ class TopUpIn(BaseModel):
 @router.get('/users')
 def list_users(user: User = Depends(admin_required), db: Session = Depends(get_db)):
     """Admin-only endpoint to return all registered users with credit info."""
-    users = db.query(User).all()
+    org_id = getattr(user, "organization_id", None)
+    query = db.query(User)
+    if org_id is not None:
+        query = query.filter(User.organization_id == org_id)
+    users = query.all()
     return [
         UserOut(
             id=u.id,
@@ -204,6 +225,10 @@ def topup_user(
     u = db.query(User).filter(User.id == user_id).first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
+    # make sure admin cannot modify users outside their org unless global
+    org_id = getattr(admin, "organization_id", None)
+    if org_id is not None and u.organization_id != org_id:
+        raise HTTPException(status_code=403, detail="Cannot modify user from another organization")
     u.credits = (u.credits or 0) + payload.amount
     db.add(u)
     db.commit()
